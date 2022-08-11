@@ -153,9 +153,14 @@ def _ensure_installed(
         eprint("reinstalling build environment")
 
     current_type = manager.get_environment().get_type()
-    if env_type is not None and exists and env_type != current_type:
-        eprint(f"re-initializing build environment (type changed: {current_type.name} → {env_type.name})")
-        install = True
+    if env_type is not None:
+        type_changed = exists and env_type != current_type
+        if not install and type_changed:
+            eprint(f"re-initializing build environment (type changed: {current_type.name} → {env_type.name})")
+            install = True
+            manager.remove()
+        elif install and type_changed:
+            eprint(f"note: build environment type changed as well ({current_type.name} → {env_type.name})")
 
     if not install and exists:
         metadata = manager.get_metadata()
@@ -177,7 +182,6 @@ def _ensure_installed(
             source = lockfile.to_pinned_requirement_spec()
             lockfile = None
 
-        manager.remove()
         manager.install(source, env_type)
 
 
