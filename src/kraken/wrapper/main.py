@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import builtins
 import logging
+import os
 import sys
 from functools import partial
 from pathlib import Path
@@ -146,6 +147,10 @@ def _ensure_installed(
     if not exists:
         env_type = env_type or env_type or manager.get_environment().get_type()
         eprint(f"initializing build environment (type: {env_type.name})")
+    elif upgrade:
+        eprint("upgrading build environment")
+    elif reinstall:
+        eprint("reinstalling build environment")
 
     current_type = manager.get_environment().get_type()
     if env_type is not None and exists and env_type != current_type:
@@ -237,7 +242,7 @@ def main() -> NoReturn:
         manager,
         requirements,
         lockfile,
-        env_options.reinstall,
+        env_options.reinstall or (os.getenv("KRAKENW_REINSTALL") == "1"),
         env_options.upgrade,
         env_options.use,
     )

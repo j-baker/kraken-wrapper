@@ -29,3 +29,9 @@ The available options are:
 * **`pythonpath`**: One or more paths to add the `sys.path` before your build script is executed. The `build-script` folder
     is always added by default (as is the default behaviour by the `kraken-core` Python script project loader).
 
+__Environment variables__
+
+* `KRAKENW_USE`: If set, it will behave as if the `--use` flag was specified (although the `--use` flag if given
+    will still take precedence over the environment variable). Can be used to enforce a certain type of build
+    environment to use (available values are `PEX_ZIPAPP` (default), `PEX_PACKED`, `PEX_LOOSE` and `VENV`).
+* `KRAKENW_REINSTALL`: If set to `1`, behaves as if `--reinstall` was specified.
