@@ -219,7 +219,7 @@ class VenvBuildEnv(BuildEnv):
         subprocess.check_call(command)
 
         python_bin = str(self._venv.get_bin("python"))
-        command = [python_bin, "-m", "pip", "install", *requirements.to_args()]
+        command = [python_bin, "-m", "pip", "install", "--use-feature=in-tree-build", *requirements.to_args()]
         subprocess.check_call(command)
 
         # Make sure the pythonpath from the requirements is encoded into the enviroment.
