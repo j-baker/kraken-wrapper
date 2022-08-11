@@ -77,7 +77,9 @@ def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
     return parser
 
 
-def lock(prog: str, argv: list[str], manager: BuildEnvManager) -> NoReturn:
+def lock(prog: str, argv: list[str], manager: BuildEnvManager, requirements: RequirementSpec) -> NoReturn:
+    from kraken.wrapper.lockfile import Lockfile
+
     parser = _get_lock_argument_parser(prog)
     parser.parse_args(argv)
 
@@ -87,8 +89,11 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager) -> NoReturn:
 
     environment = manager.get_environment()
     distributions = environment.get_installed_distributions()
-    print(distributions)
-    raise NotImplementedError
+
+    lockfile = Lockfile(requirements, {dist.name: dist.version for dist in distributions})
+    lockfile.write_to(Path(LOCK_FILENAME))
+    manager.set_locked(lockfile)
+    sys.exit(0)
 
 
 def _print_env_status(
@@ -106,18 +111,17 @@ def _print_env_status(
     table.rows.append(("Requirements", BUILDSCRIPT_FILENAME, requirements.to_hash(hash_algorithm)))
     if lockfile:
         table.rows.append(("Lockfile", LOCK_FILENAME, "-"))
-        table.rows.append(("  Requirements hash", "-", lockfile.requirements.to_hash(hash_algorithm)))
-        table.rows.append(("  Pinned hash", "-", lockfile.to_pinned_requirement_spec().to_hash(hash_algorithm)))
+        table.rows.append(("  Requirements hash", "", lockfile.requirements.to_hash(hash_algorithm)))
+        table.rows.append(("  Pinned hash", "", lockfile.to_pinned_requirement_spec().to_hash(hash_algorithm)))
     else:
         table.rows.append(("Lockfile", LOCK_FILENAME, "n/a"))
     if manager.exists():
         metadata = manager.get_metadata()
         environment = manager.get_environment()
-        table.rows.append(("Environment", str(environment.get_path()), "-"))
-        table.rows.append(("  Type", "-", environment.get_type().name))
+        table.rows.append(("Environment", str(environment.get_path()), environment.get_type().name))
         table.rows.append(("  Metadata", str(manager.get_metadata_file()), "-"))
-        table.rows.append(("    Created at", "-", dt2json(metadata.created_at)))
-        table.rows.append(("    Requirements hash", "-", metadata.requirements_hash))
+        table.rows.append(("    Created at", "", dt2json(metadata.created_at)))
+        table.rows.append(("    Requirements hash", "", metadata.requirements_hash))
     else:
         table.rows.append(("Environment", str(manager.get_environment().get_path()), "n/a"))
     table.print()
@@ -250,7 +254,7 @@ def main() -> NoReturn:
         sys.exit(0)
 
     elif cmd in ("lock", "l"):
-        lock(f"{parser.prog} lock", argv, manager)
+        lock(f"{parser.prog} lock", argv, manager, requirements)
 
     else:
         environment = manager.get_environment()

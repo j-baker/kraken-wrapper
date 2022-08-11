@@ -18,6 +18,8 @@ from kraken.util.helpers import NotSet, not_none
 if TYPE_CHECKING:
     from kraken.util.requirements import RequirementSpec
 
+    from kraken.wrapper.lockfile import Lockfile
+
 logger = logging.getLogger(__name__)
 
 
@@ -292,6 +294,17 @@ class BuildEnvManager:
         metadata = self._metadata_store.get()
         environment_type = self._default_type if metadata is None else metadata.environment_type
         return _get_environment_for_type(environment_type, self._path)
+
+    def set_locked(self, lockfile: Lockfile) -> None:
+        metadata = self._metadata_store.get()
+        assert metadata is not None
+        metadata = BuildEnvMetadata(
+            metadata.created_at,
+            metadata.environment_type,
+            lockfile.to_pinned_requirement_spec().to_hash(metadata.hash_algorithm),
+            metadata.hash_algorithm,
+        )
+        self._metadata_store.set(metadata)
 
 
 def _get_environment_for_type(environment_type: BuildEnvType, base_path: Path) -> BuildEnv:

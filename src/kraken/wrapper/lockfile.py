@@ -29,6 +29,8 @@ class Lockfile:
 
     @staticmethod
     def from_json(data: dict[str, Any]) -> Lockfile:
+        from kraken.util.requirements import RequirementSpec
+
         return Lockfile(
             requirements=RequirementSpec.from_json(data["requirements"]),
             pinned=data["pinned"],
