@@ -22,7 +22,8 @@ BUILD_SUPPORT_DIRECTORY = "build-support"
 LOCK_FILENAME = ".kraken.lock"
 _FormatterClass = lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=60, width=120)  # noqa: 731
 logger = logging.getLogger(__name__)
-print = partial(builtins.print, flush=True)
+print = partial(builtins.print, "[krakenw]", flush=True)
+eprint = partial(print, file=sys.stderr)
 
 
 def _get_argument_parser() -> argparse.ArgumentParser:
@@ -90,9 +91,12 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, requirements: Req
     environment = manager.get_environment()
     distributions = environment.get_installed_distributions()
 
+    had_lockfile = Path(LOCK_FILENAME).exists()
     lockfile = Lockfile(requirements, {dist.name: dist.version for dist in distributions})
     lockfile.write_to(Path(LOCK_FILENAME))
     manager.set_locked(lockfile)
+
+    eprint("lock file", "updated" if had_lockfile else "created", f"({LOCK_FILENAME})")
     sys.exit(0)
 
 
@@ -140,11 +144,12 @@ def _ensure_installed(
     install = reinstall or upgrade or not exists
 
     if not exists:
-        logger.info("build environment does not exist, will install.")
+        env_type = env_type or env_type or manager.get_environment().get_type()
+        eprint(f"initializing build environment (type: {env_type.name})")
 
     current_type = manager.get_environment().get_type()
     if env_type is not None and exists and env_type != current_type:
-        logger.info('the current build environment is of a different type ("%s"), will reinstall.', current_type.name)
+        eprint(f"re-initializing build environment (type changed: {current_type.name} → {env_type.name})")
         install = True
 
     if not install and exists:
@@ -153,16 +158,10 @@ def _ensure_installed(
             metadata.hash_algorithm
         ):
             install = True
-            logger.warning(
-                'your build environment is outdated compared to your lockfile "%s", will reinstall.',
-                LOCK_FILENAME,
-            )
+            eprint("re-initializing build environment (outdated compared to lockfile)")
         if not lockfile and metadata.requirements_hash != requirements.to_hash(metadata.hash_algorithm):
             install = True
-            logger.warning(
-                'your build environemnt is outdated compared to your requirements "%s", will reinstall.',
-                LOCK_FILENAME,
-            )
+            eprint("re-initializing build environment (outdated compared to requirements)")
 
     if install:
         if not lockfile or upgrade:
@@ -213,27 +212,24 @@ def main() -> NoReturn:
         logger.debug('loading lockfile from "%s"', LOCK_FILENAME)
         lockfile = Lockfile.from_path(Path(LOCK_FILENAME))
         if lockfile.requirements != requirements:
-            logger.warning(
-                'lock file "%s" is outdated compared to requirements in "%s". consider updating it with '
-                "`kraken --upgrade lock`",
-                LOCK_FILENAME,
-                BUILDSCRIPT_FILENAME,
-            )
+            eprint(f'lock file "{LOCK_FILENAME}" is outdated compared to requirements in "{BUILDSCRIPT_FILENAME}"')
+            eprint("consider updating the lock file with `krakenw --upgrade lock`")
     else:
         lockfile = None
 
-    logger.debug('managing build environment at "%s"', BUILDENV_PATH)
     manager = BuildEnvManager(BUILDENV_PATH)
 
     if env_options.status:
         if args.cmd or args.args:
-            parser.error("--status option must be used alone")
+            eprint("error: --status option must be used alone")
+            sys.exit(1)
         _print_env_status(manager, requirements, lockfile)
         sys.exit(0)
 
     if env_options.uninstall:
         if args.cmd or args.args:
-            parser.error("--uninstall option must be used alone")
+            eprint("error: --uninstall option must be used alone")
+            sys.exit(1)
         manager.remove()
         sys.exit(0)
 
@@ -259,9 +255,6 @@ def main() -> NoReturn:
     else:
         environment = manager.get_environment()
         environment.dispatch_to_kraken_cli([cmd, *argv])
-        raise NotImplementedError("delegate to environment")
-
-    sys.exit(0)
 
 
 if __name__ == "__main__":
