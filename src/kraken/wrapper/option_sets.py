@@ -16,7 +16,7 @@ class EnvOptions:
     upgrade: bool
     reinstall: bool
     uninstall: bool
-    use_env_type: BuildEnvType | None
+    use: BuildEnvType | None
 
     @staticmethod
     def add_to_parser(parser: argparse.ArgumentParser) -> None:
@@ -43,10 +43,13 @@ class EnvOptions:
             help="uninstall the build environment",
         )
         parser.add_argument(
-            "--use-env-type",
+            "--use",
             choices=[v.name for v in BuildEnvType],
-            default=os.getenv("KRAKENW_ENV_TYPE"),
-            help="use the specified build environment type; reinstalls the environment on change [default: PEX_ZIPAPP]",
+            default=os.getenv("KRAKENW_USE"),
+            help="use the specified environment type. If the environment type changes it will trigger a reinstall.\n"
+            "Defaults to the value of the KRAKENW_USE environment variable. If that variable is unset, and\nif a build "
+            "environment already exists, that environment's type will be used. The default\nenvironment type that is "
+            "used for new environments is PEX_ZIPAPP.",
         )
 
     @classmethod
@@ -58,8 +61,8 @@ class EnvOptions:
             upgrade=args.upgrade,
             reinstall=args.reinstall,
             uninstall=args.uninstall,
-            use_env_type=BuildEnvType[args.use_env_type] if args.use_env_type else None,
+            use=BuildEnvType[args.use] if args.use else None,
         )
 
     def any(self) -> bool:
-        return bool(self.status or self.upgrade or self.reinstall or self.uninstall or self.use_env_type)
+        return bool(self.status or self.upgrade or self.reinstall or self.uninstall or self.use)

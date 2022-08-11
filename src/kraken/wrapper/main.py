@@ -239,7 +239,7 @@ def main() -> NoReturn:
         lockfile,
         env_options.reinstall,
         env_options.upgrade,
-        env_options.use_env_type,
+        env_options.use,
     )
 
     cmd: str | None = args.cmd[0] if args.cmd else None
