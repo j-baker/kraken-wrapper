@@ -250,7 +250,7 @@ def main() -> NoReturn:
     if Path(LOCK_FILENAME).is_file():
         logger.debug('loading lockfile from "%s"', LOCK_FILENAME)
         lockfile = Lockfile.from_path(Path(LOCK_FILENAME))
-        if lockfile.requirements != requirements:
+        if not env_options.upgrade and lockfile.requirements != requirements:
             eprint(f'lock file "{LOCK_FILENAME}" is outdated compared to requirements in "{BUILDSCRIPT_FILENAME}"')
             eprint("consider updating the lock file with `krakenw --upgrade lock`")
     else:
