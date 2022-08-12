@@ -153,7 +153,7 @@ class PexBuildEnv(BuildEnv):
 
         from kraken.util.text import lazy_str
 
-        from kraken.wrapper.pex import PEXBuildConfig, PEXLayout, inject_pip_args_for_pex_resolve
+        from kraken.wrapper.pex import PEXBuildConfig, PEXLayout
 
         config = PEXBuildConfig(
             interpreter_constraints=(
