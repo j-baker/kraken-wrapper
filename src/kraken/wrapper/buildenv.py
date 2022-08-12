@@ -272,7 +272,7 @@ class BuildEnvManager:
     def __init__(
         self,
         path: Path,
-        default_type: BuildEnvType = BuildEnvType.PEX_ZIPAPP,
+        default_type: BuildEnvType = BuildEnvType.VENV,
         default_hash_algorithm: str = "sha256",
     ) -> None:
         from kraken.util.path import with_name
