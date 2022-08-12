@@ -194,7 +194,13 @@ class PexBuildEnv(BuildEnv):
         from kraken.util.krakenw import KrakenwEnv
 
         with self.activate():
+            import logging
+
             from kraken.cli.main import main
+
+            # We need to un-initialize the logger such that kraken-core can re-initialize it.
+            for handler in logging.root.handlers[:]:
+                logging.root.removeHandler(handler)
 
             env = os.environ.copy()
             os.environ.update(KrakenwEnv(self._path, self.get_type().name).to_env_vars())
