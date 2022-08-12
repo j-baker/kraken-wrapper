@@ -267,23 +267,26 @@ def main() -> NoReturn:
         manager.remove()
         sys.exit(0)
 
-    _ensure_installed(
-        manager,
-        requirements,
-        lockfile,
-        env_options.reinstall or (os.getenv("KRAKENW_REINSTALL") == "1"),
-        env_options.upgrade,
-        env_options.use,
-    )
-
     cmd: str | None = args.cmd[0] if args.cmd else None
     argv: list[str] = args.cmd[1:] + args.args
+
+    is_lock_command = cmd in ("lock", "l")
+
+    if env_options.any() or not is_lock_command:
+        _ensure_installed(
+            manager,
+            requirements,
+            lockfile,
+            env_options.reinstall or (os.getenv("KRAKENW_REINSTALL") == "1"),
+            env_options.upgrade,
+            env_options.use,
+        )
 
     if cmd is None:
         assert not argv
         sys.exit(0)
 
-    elif cmd in ("lock", "l"):
+    elif is_lock_command:
         lock(f"{parser.prog} lock", argv, manager, requirements)
 
     else:
