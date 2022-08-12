@@ -238,12 +238,18 @@ class VenvBuildEnv(BuildEnv):
             logger.debug("Reusing virtual environment at %s", self._path)
 
         python_bin = str(self._venv.get_bin("python"))
+
+        # Upgrade Pip.
+        command = [python_bin, "-m", "pip", "install", "--upgrade", "pip"]
+        logger.debug("Upgrading Pip: %s", command)
+        subprocess.check_call(command)
+
+        # Install requirements.
         command = [
             python_bin,
             "-m",
             "pip",
             "install",
-            "--use-feature=in-tree-build",
             "--disable-pip-version-check",
             "--no-python-version-warning",
             "--no-input",

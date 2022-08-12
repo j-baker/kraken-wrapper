@@ -1,0 +1,5 @@
+[[entries]]
+id = "884e2e86-4e3f-4041-913b-f11a2688dfba"
+type = "fix"
+description = "`VENV` environment type now ensures Pip is up to date in the environment before installing requirements; removed `--use-feature=in-tree-build` flag is it was removed from `20.0.4` to `21.0` and is now the default"
+author = "@NiklasRosenstein"
