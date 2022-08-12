@@ -35,3 +35,8 @@ __Environment variables__
     will still take precedence over the environment variable). Can be used to enforce a certain type of build
     environment to use (available values are `PEX_ZIPAPP` (default), `PEX_PACKED`, `PEX_LOOSE` and `VENV`).
 * `KRAKENW_REINSTALL`: If set to `1`, behaves as if `--reinstall` was specified.
+
+__Recommendations__
+
+When using local requirements, using the `VENV` type is a lot fast because it can leverage Pip's `in-tree-build`
+feature. Pex [does not currently support in-tree builds](https://github.com/pantsbuild/pex/issues/1357#issuecomment-860133766).
