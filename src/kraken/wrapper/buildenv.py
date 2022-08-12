@@ -163,7 +163,7 @@ class PexBuildEnv(BuildEnv):
             requirements=requirements.to_args(Path.cwd(), with_options=False),
             index_url=requirements.index_url,
             extra_index_urls=list(requirements.extra_index_urls),
-            transitive=transitive,
+            transitive=True,  # Our lockfiles are not fully cross platform compatible (see kraken-wrapper#2)
         )
 
         layout = {
@@ -242,8 +242,9 @@ class VenvBuildEnv(BuildEnv):
             "--no-python-version-warning",
             "--no-input",
         ]
-        if not transitive:
-            command += ["--no-deps"]
+        # Must enable transitive resolution because lock files are not currently cross platform (see kraken-wrapper#2).
+        # if not transitive:
+        #     command += ["--no-deps"]
         command += requirements.to_args()
         logger.debug("Installing into build environment with Pip: %s", " ".join(command))
         subprocess.check_call(command)
