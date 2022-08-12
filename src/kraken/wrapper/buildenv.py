@@ -175,8 +175,7 @@ class PexBuildEnv(BuildEnv):
         logger.debug("PEX build configuration is %s", lazy_str(lambda: pprint.pformat(config)))
 
         logger.info('begin PEX resolve for build environment "%s"', self._path)
-        with inject_pip_args_for_pex_resolve(["--use-feature=fast-deps"]):
-            installed = config.resolve()
+        installed = config.resolve()
 
         logger.info('building PEX for build environment "%s"', self._path)
         builder = config.builder(installed)
