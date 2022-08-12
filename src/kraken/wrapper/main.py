@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 
 from . import __version__
+from .lockfile import calculate_lockfile
 
 if TYPE_CHECKING:
     from kraken.util.requirements import RequirementSpec
@@ -80,8 +81,6 @@ def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
 
 
 def lock(prog: str, argv: list[str], manager: BuildEnvManager, requirements: RequirementSpec) -> NoReturn:
-    from kraken.wrapper.lockfile import Lockfile
-
     parser = _get_lock_argument_parser(prog)
     parser.parse_args(argv)
 
@@ -91,9 +90,13 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, requirements: Req
 
     environment = manager.get_environment()
     distributions = environment.get_installed_distributions()
+    lockfile, extra_distributions = calculate_lockfile(requirements, distributions)
+    extra_distributions.discard("pip")  # We'll always have that in a virtual env.
+
+    if extra_distributions:
+        eprint("found extra distributions in build enviroment:", ", ".join(extra_distributions))
 
     had_lockfile = Path(LOCK_FILENAME).exists()
-    lockfile = Lockfile(requirements, {dist.name: dist.version for dist in distributions})
     lockfile.write_to(Path(LOCK_FILENAME))
     manager.set_locked(lockfile)
 

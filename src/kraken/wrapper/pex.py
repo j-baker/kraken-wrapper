@@ -4,7 +4,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from pex.pex import PEX
 from pex.pex_builder import CopyMode, Layout as PEXLayout, PEXBuilder
@@ -118,7 +118,7 @@ def inject_pip_args_for_pex_resolve(args: list[str]) -> Iterator[None]:
 
     old_method = getattr(Pip, method_name)
 
-    def new_method(cls, *a, **kw) -> Iterator[str]:
+    def new_method(cls: type[Pip], *a: Any, **kw: Any) -> Iterator[str]:
         yield from old_method(*a, **kw)
         yield from args
 

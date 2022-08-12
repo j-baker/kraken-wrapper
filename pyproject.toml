@@ -25,6 +25,7 @@ kraken-core = "^0.8.6"
 pex = "^2.1.103"
 tomli = "^2.0.1"
 tomli_w = "^1.0.0"
+setuptools = ">=33.0.0"
 
 [tool.poetry.dev-dependencies]
 black = "*"

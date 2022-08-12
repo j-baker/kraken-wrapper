@@ -8,6 +8,14 @@ if TYPE_CHECKING:
     from kraken.util.requirements import RequirementSpec
 
 
+@dataclasses.dataclass(frozen=True)
+class Distribution:
+    name: str
+    version: str
+    requirements: list[str]
+    extras: set[str]
+
+
 @dataclasses.dataclass
 class Lockfile:
     requirements: RequirementSpec
@@ -67,3 +75,62 @@ class Lockfile:
         )
 
         return requirements
+
+
+def calculate_lockfile(
+    requirements: RequirementSpec,
+    distributions: list[Distribution],
+) -> tuple[Lockfile, set[str]]:
+    """Calculate the lockfile of the environment.
+
+    :param requirements: The requirements that were used to install the environment. These requirements
+        will be embedded as part of the returned lockfile.
+    :return: (lockfile, extra_distributions)
+    """
+
+    from kraken.util.requirements import PipRequirement
+    from pkg_resources import Requirement as ParsedRequirement
+
+    # Contains the versions we pinned.
+    pinned: dict[str, str] = {}
+    pinned_lower: set[str] = set()
+
+    # Convert all distribution names to lowercase.
+    dists = {dist.name.lower(): dist for dist in distributions}
+
+    # Convert our internal requirements representation to parsed requirements. Local requirements
+    # are treated without extras.
+    requirements_stack = [
+        ParsedRequirement.parse(str(req) if isinstance(req, PipRequirement) else req.name)
+        for req in requirements.requirements
+    ]
+
+    while requirements_stack:
+        package_req = requirements_stack.pop(0)
+        package_name = package_req.project_name
+
+        if package_name in pinned:
+            # Already collected it.
+            # TODO (@NiklasRosenstein): Maybe this req has extras we haven't considered yer?
+            continue
+
+        if package_name.lower() in pinned_lower:
+            # NOTE (@NiklasRosenstein): We may be missing the package because it's a requirement that is only
+            #       installed under certain conditions (e.g. markers/extras).
+            continue
+
+        dist = dists[package_name.lower()]
+
+        # Pin the package version.
+        pinned[dist.name] = dist.version
+        pinned_lower.add(package_name)
+
+        # Filter the requirements of the distribution down to the ones required according to markers and the
+        # current package requirement's extras.
+        for req in map(ParsedRequirement.parse, dist.requirements):
+            if not req.marker or any(req.marker.evaluate({"extra": extra}) for extra in package_req.extras):
+                requirements_stack.append(req)
+
+    extra_distributions = dists.keys() - pinned_lower
+    pinned = {k: v for k, v in sorted(pinned.items(), key=lambda t: t[0].lower())}
+    return Lockfile(requirements, pinned), extra_distributions

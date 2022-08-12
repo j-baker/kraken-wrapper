@@ -19,17 +19,9 @@ from kraken.util.helpers import NotSet, not_none
 if TYPE_CHECKING:
     from kraken.util.requirements import RequirementSpec
 
-    from kraken.wrapper.lockfile import Lockfile
+    from kraken.wrapper.lockfile import Distribution, Lockfile
 
 logger = logging.getLogger(__name__)
-
-
-@dataclasses.dataclass(frozen=True)
-class Distribution:
-    name: str
-    version: str
-    requirements: list[str]
-    extras: set[str]
 
 
 class BuildEnv(abc.ABC):
@@ -369,6 +361,8 @@ def _get_environment_for_type(environment_type: BuildEnvType, base_path: Path) -
 
 
 def _get_installed_distributions(kraken_command_prefix: Sequence[str]) -> list[Distribution]:
+    from kraken.wrapper.lockfile import Distribution
+
     command = [*kraken_command_prefix, "query", "env"]
     output = subprocess.check_output(command).decode()
     return [Distribution(x["name"], x["version"], x["requirements"], x["extras"]) for x in json.loads(output)]
