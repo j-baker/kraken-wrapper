@@ -33,6 +33,7 @@ flake8 = "*"
 isort = "*"
 mypy = "*"
 pytest = "*"
+types-setuptools = "^57.4.18"
 
 [tool.poetry.scripts]
 krakenw = "kraken.wrapper.main:main"
