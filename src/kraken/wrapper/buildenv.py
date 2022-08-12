@@ -8,6 +8,7 @@ import enum
 import hashlib
 import json
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -188,10 +189,18 @@ class PexBuildEnv(BuildEnv):
         builder.build(str(self._path), layout=layout)
 
     def dispatch_to_kraken_cli(self, argv: list[str]) -> NoReturn:
+        from kraken.util.krakenw import KrakenwEnv
+
         with self.activate():
             from kraken.cli.main import main
 
-            main("krakenw", argv)
+            env = os.environ.copy()
+            os.environ.update(KrakenwEnv(self._path, self.get_type().name).to_env_vars())
+            try:
+                main("krakenw", argv)
+            finally:
+                os.environ.clear()
+                os.environ.update(env)
         assert False
 
 
@@ -230,9 +239,12 @@ class VenvBuildEnv(BuildEnv):
             pth_file.write_text("\n".join(str(Path(path).absolute()) for path in requirements.pythonpath))
 
     def dispatch_to_kraken_cli(self, argv: list[str]) -> NoReturn:
+        from kraken.util.krakenw import KrakenwEnv
+
         python = self._venv.get_bin("python")
         command = [str(python), "-m", "kraken.cli.main", *argv]
-        sys.exit(subprocess.call(command))
+        env = {**os.environ, **KrakenwEnv(self._path, self.get_type().name).to_env_vars()}
+        sys.exit(subprocess.call(command, env=env))
 
 
 class BuildEnvManager:

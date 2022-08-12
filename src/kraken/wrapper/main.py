@@ -183,6 +183,8 @@ def _ensure_installed(
             lockfile = None
 
         manager.install(source, env_type)
+    else:
+        eprint(f"reusing build environment (type: {current_type.name})")
 
 
 def main() -> NoReturn:
