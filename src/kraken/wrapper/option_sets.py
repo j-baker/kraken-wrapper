@@ -49,7 +49,7 @@ class EnvOptions:
             help="use the specified environment type. If the environment type changes it will trigger a reinstall.\n"
             "Defaults to the value of the KRAKENW_USE environment variable. If that variable is unset, and\nif a build "
             "environment already exists, that environment's type will be used. The default\nenvironment type that is "
-            "used for new environments is PEX_ZIPAPP.",
+            "used for new environments is VENV.",
         )
 
     @classmethod
