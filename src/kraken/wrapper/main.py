@@ -144,23 +144,29 @@ def _ensure_installed(
     exists = manager.exists()
     install = reinstall or upgrade or not exists
 
+    operation: str
+    reason: str | None = None
+
     if not exists:
         env_type = env_type or env_type or manager.get_environment().get_type()
-        eprint(f"initializing build environment (type: {env_type.name})")
+        operation = "initializing"
     elif upgrade:
-        eprint("upgrading build environment")
+        operation = "upgrading"
     elif reinstall:
-        eprint("reinstalling build environment")
+        operation = "reinstalling"
+    else:
+        operation = "reusing"
 
     current_type = manager.get_environment().get_type()
     if env_type is not None:
         type_changed = exists and env_type != current_type
         if not install and type_changed:
-            eprint(f"re-initializing build environment (type changed: {current_type.name} → {env_type.name})")
             install = True
             manager.remove()
+            operation = "re-initializing"
+            reason = f"type changed from {current_type.name}"
         elif install and type_changed:
-            eprint(f"note: build environment type changed as well ({current_type.name} → {env_type.name})")
+            reason = f"type changed from {current_type.name}"
 
     if not install and exists:
         metadata = manager.get_metadata()
@@ -168,25 +174,37 @@ def _ensure_installed(
             metadata.hash_algorithm
         ):
             install = True
-            eprint("re-initializing build environment (outdated compared to lockfile)")
+            operation = "re-initializing"
+            reason = "outdated compared to lockfile"
         if not lockfile and metadata.requirements_hash != requirements.to_hash(metadata.hash_algorithm):
             install = True
-            eprint("re-initializing build environment (outdated compared to requirements)")
+            operation = "re-initializing"
+            reason = "outdated compared to requirements"
 
     if install:
         if not lockfile or upgrade:
-            logger.info("installing from requirements")
+            source_name = "requirements"
             source = requirements
             transitive = True
         else:
-            logger.info("installing from lock file")
+            source_name = "lock file"
             source = lockfile.to_pinned_requirement_spec()
             lockfile = None
             transitive = False
 
+        env_type = env_type or manager.get_environment().get_type()
+        eprint(
+            operation,
+            "build environment of type",
+            env_type.name,
+            "from",
+            source_name,
+            f"({reason})" if reason else "",
+        )
+
         manager.install(source, env_type, transitive)
     else:
-        eprint(f"reusing build environment (type: {current_type.name})")
+        eprint(operation, "build environment of type", current_type.name)
 
 
 def main() -> NoReturn:
