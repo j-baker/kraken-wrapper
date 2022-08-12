@@ -5,6 +5,7 @@ import builtins
 import logging
 import os
 import sys
+import time
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
@@ -205,7 +206,11 @@ def _ensure_installed(
             f"({reason})" if reason else "",
         )
 
+        tstart = time.perf_counter()
         manager.install(source, env_type, transitive)
+        duration = time.perf_counter() - tstart
+        eprint(f"operation complete after {duration:.3f}s")
+
     else:
         eprint(operation, "build environment of type", current_type.name)
 
