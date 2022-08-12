@@ -48,7 +48,7 @@ class BuildEnv(abc.ABC):
         """Return the distributions that are currently installed in the environment."""
 
     @abc.abstractmethod
-    def build(self, requirements: RequirementSpec) -> None:
+    def build(self, requirements: RequirementSpec, transitive: bool) -> None:
         """Build the environment from the given requirement spec."""
 
     @abc.abstractmethod
@@ -156,12 +156,12 @@ class PexBuildEnv(BuildEnv):
     def get_installed_distributions(self) -> list[Distribution]:
         return _get_installed_distributions([sys.executable, str(self._path)])
 
-    def build(self, requirements: RequirementSpec) -> None:
+    def build(self, requirements: RequirementSpec, transitive: bool) -> None:
         import pprint
 
         from kraken.util.text import lazy_str
 
-        from kraken.wrapper.pex import PEXBuildConfig, PEXLayout
+        from kraken.wrapper.pex import PEXBuildConfig, PEXLayout, inject_pip_args_for_pex_resolve
 
         config = PEXBuildConfig(
             interpreter_constraints=(
@@ -171,6 +171,7 @@ class PexBuildEnv(BuildEnv):
             requirements=requirements.to_args(Path.cwd(), with_options=False),
             index_url=requirements.index_url,
             extra_index_urls=list(requirements.extra_index_urls),
+            transitive=transitive,
         )
 
         layout = {
@@ -182,7 +183,8 @@ class PexBuildEnv(BuildEnv):
         logger.debug("PEX build configuration is %s", lazy_str(lambda: pprint.pformat(config)))
 
         logger.info('begin PEX resolve for build environment "%s"', self._path)
-        installed = config.resolve()
+        with inject_pip_args_for_pex_resolve(["--use-feature=fast-deps"]):
+            installed = config.resolve()
 
         logger.info('building PEX for build environment "%s"', self._path)
         builder = config.builder(installed)
@@ -223,20 +225,41 @@ class VenvBuildEnv(BuildEnv):
         python = self._venv.get_bin("python")
         return _get_installed_distributions([str(python), "-m", "kraken.cli.main"])
 
-    def build(self, requirements: RequirementSpec) -> None:
-        command = [sys.executable, "-m", "venv", str(self._path)]
-        subprocess.check_call(command)
+    def build(self, requirements: RequirementSpec, transitive: bool) -> None:
+        if not self._path.exists():
+            command = [sys.executable, "-m", "venv", str(self._path)]
+            logger.debug("Creating virtual environment: %s", " ".join(command))
+            subprocess.check_call(command)
+        else:
+            logger.debug("Reusing virtual environment at %s", self._path)
 
         python_bin = str(self._venv.get_bin("python"))
-        command = [python_bin, "-m", "pip", "install", "--use-feature=in-tree-build", *requirements.to_args()]
+        command = [
+            python_bin,
+            "-m",
+            "pip",
+            "install",
+            "--use-feature=in-tree-build",
+            "--disable-pip-version-check",
+            "--no-python-version-warning",
+            "--no-input",
+        ]
+        if not transitive:
+            command += ["--no-deps"]
+        command += requirements.to_args()
+        logger.debug("Installing into build environment with Pip: %s", " ".join(command))
         subprocess.check_call(command)
 
         # Make sure the pythonpath from the requirements is encoded into the enviroment.
+        command = [python_bin, "-c", "from sysconfig import get_path; print(get_path('purelib'))"]
+        site_packages = Path(subprocess.check_output(command).decode().strip())
+        pth_file = site_packages / "krakenw.pth"
         if requirements.pythonpath:
-            command = [python_bin, "-c", "from sysconfig import get_path; print(get_path('purelib'))"]
-            site_packages = Path(subprocess.check_output(command).decode().strip())
-            pth_file = site_packages / "krakenw.pth"
+            logger.debug("Writing .pth file at %s", pth_file)
             pth_file.write_text("\n".join(str(Path(path).absolute()) for path in requirements.pythonpath))
+        elif pth_file.is_file():
+            logger.debug("Removing .pth file at %s", pth_file)
+            pth_file.unlink()
 
     def dispatch_to_kraken_cli(self, argv: list[str]) -> NoReturn:
         from kraken.util.krakenw import KrakenwEnv
@@ -276,13 +299,22 @@ class BuildEnvManager:
         safe_rmpath(self._metadata_store.path)
         safe_rmpath(self.get_environment().get_path())
 
-    def install(self, requirements: RequirementSpec, env_type: BuildEnvType | None = None) -> None:
+    def install(
+        self, requirements: RequirementSpec, env_type: BuildEnvType | None = None, transitive: bool = True
+    ) -> None:
+        """
+        :param requirements: The requirements to build the environment with.
+        :param env_type: The environment type to use. If not specified, falls back to the last used or default.
+        :param transitive: If set to `False`, it indicates that the *requirements* are fully resolved and the
+            build environment installer does not need to resolve transitve dependencies.
+        """
+
         if env_type is None:
             metadata = self._metadata_store.get()
             env_type = metadata.environment_type if metadata else self._default_type
 
         env = _get_environment_for_type(env_type, self._path)
-        env.build(requirements)
+        env.build(requirements, transitive)
         hash_algorithm = self.get_hash_algorithm()
         metadata = BuildEnvMetadata(
             datetime.datetime.utcnow(),

@@ -177,12 +177,14 @@ def _ensure_installed(
         if not lockfile or upgrade:
             logger.info("installing from requirements")
             source = requirements
+            transitive = True
         else:
             logger.info("installing from lock file")
             source = lockfile.to_pinned_requirement_spec()
             lockfile = None
+            transitive = False
 
-        manager.install(source, env_type)
+        manager.install(source, env_type, transitive)
     else:
         eprint(f"reusing build environment (type: {current_type.name})")
 

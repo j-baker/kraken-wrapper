@@ -1,8 +1,10 @@
 """ A wrapper around the PEX builder interface. """
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 from pathlib import Path
+from typing import Iterator
 
 from pex.pex import PEX
 from pex.pex_builder import CopyMode, Layout as PEXLayout, PEXBuilder
@@ -47,9 +49,10 @@ class PEXBuildConfig:
     index_url: str | None = None
     extra_index_urls: list[str] = dataclasses.field(default_factory=list)
     password_entries: list[PasswordEntry] = dataclasses.field(default_factory=list)
-    pip_resolver_version: ResolverVersion = ResolverVersion.PIP_2020
+    pip_resolver_version: ResolverVersion = ResolverVersion.PIP_LEGACY  # PIP_2020
     platforms: list[str] | None = None
     preserve_log: bool = False
+    transitive: bool = True
 
     def resolve(self) -> Installed:
         if self.platforms is None:
@@ -68,6 +71,7 @@ class PEXBuildConfig:
             resolver_version=self.pip_resolver_version,
             password_entries=self.password_entries,
             preserve_log=self.preserve_log,
+            transitive=self.transitive,
         )
 
     def builder(self, installed: Installed | None) -> PEXBuilder:
@@ -102,3 +106,24 @@ class PEXBuildConfig:
             pex_builder.set_shebang(self.shebang)
 
         return pex_builder
+
+
+@contextlib.contextmanager
+def inject_pip_args_for_pex_resolve(args: list[str]) -> Iterator[None]:
+    """Inject *args* into the arguments that will be used for the Pex resolve."""
+
+    from pex.pip.tool import Pip
+
+    method_name = "_calculate_resolver_version_args"
+
+    old_method = getattr(Pip, method_name)
+
+    def new_method(cls, *a, **kw) -> Iterator[str]:
+        yield from old_method(*a, **kw)
+        yield from args
+
+    setattr(Pip, method_name, new_method)
+    try:
+        yield
+    finally:
+        setattr(Pip, method_name, old_method)
