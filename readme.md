@@ -35,6 +35,8 @@ __Environment variables__
     will still take precedence over the environment variable). Can be used to enforce a certain type of build
     environment to use (available values are `PEX_ZIPAPP` (default), `PEX_PACKED`, `PEX_LOOSE` and `VENV`).
 * `KRAKENW_REINSTALL`: If set to `1`, behaves as if `--reinstall` was specified.
+* `KRAKENW_INCREMENTAL`: If set to `1`, virtual environment build environments are "incremental", i.e. they will
+    be reused if they already exist and their installed distributions will be upgraded.
 
 __Recommendations__
 

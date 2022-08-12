@@ -204,11 +204,12 @@ class PexBuildEnv(BuildEnv):
 
 
 class VenvBuildEnv(BuildEnv):
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, incremental: bool = False) -> None:
         from kraken._vendor.nr.python.environment.virtualenv import VirtualEnvInfo
 
         self._path = path
         self._venv = VirtualEnvInfo(self._path)
+        self._incremental = incremental
 
     # BuildEnv
 
@@ -223,9 +224,15 @@ class VenvBuildEnv(BuildEnv):
         return _get_installed_distributions([str(python), "-m", "kraken.cli.main"])
 
     def build(self, requirements: RequirementSpec, transitive: bool) -> None:
+        from kraken.util.fs import safe_rmpath
+
+        if not self._incremental and self._path.exists():
+            logger.debug("Removing existing virtual environment at %s", self._path)
+            safe_rmpath(self._path)
+
         if not self._path.exists():
             command = [sys.executable, "-m", "venv", str(self._path)]
-            logger.debug("Creating virtual environment: %s", " ".join(command))
+            logger.debug("Creating virtual environment at %s: %s", self._path, " ".join(command))
             subprocess.check_call(command)
         else:
             logger.debug("Reusing virtual environment at %s", self._path)
@@ -355,7 +362,7 @@ def _get_environment_for_type(environment_type: BuildEnvType, base_path: Path) -
     if environment_type in PexBuildEnv.STYLES:
         return PexBuildEnv(environment_type, with_name(base_path, base_path.name + ".pex"))
     elif environment_type == BuildEnvType.VENV:
-        return VenvBuildEnv(base_path)
+        return VenvBuildEnv(base_path, incremental=os.getenv("KRAKENW_INCREMENTAL") == "1")
     else:
         raise RuntimeError(f"unsupported environment type: {environment_type!r}")
 
