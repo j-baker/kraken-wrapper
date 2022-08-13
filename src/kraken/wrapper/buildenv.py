@@ -230,19 +230,20 @@ class VenvBuildEnv(BuildEnv):
             logger.debug("Removing existing virtual environment at %s", self._path)
             safe_rmpath(self._path)
 
+        python_bin = str(self._venv.get_bin("python"))
+
         if not self._path.exists():
             command = [sys.executable, "-m", "venv", str(self._path)]
             logger.debug("Creating virtual environment at %s: %s", self._path, " ".join(command))
             subprocess.check_call(command)
+
+            # Upgrade Pip.
+            command = [python_bin, "-m", "pip", "install", "--upgrade", "pip"]
+            logger.debug("Upgrading Pip: %s", command)
+            subprocess.check_call(command)
+
         else:
             logger.debug("Reusing virtual environment at %s", self._path)
-
-        python_bin = str(self._venv.get_bin("python"))
-
-        # Upgrade Pip.
-        command = [python_bin, "-m", "pip", "install", "--upgrade", "pip"]
-        logger.debug("Upgrading Pip: %s", command)
-        subprocess.check_call(command)
 
         # Install requirements.
         command = [
