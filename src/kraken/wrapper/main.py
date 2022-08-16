@@ -8,7 +8,7 @@ import sys
 import time
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, NamedTuple, NoReturn
 
 from . import __version__
 from .lockfile import calculate_lockfile
@@ -82,7 +82,9 @@ def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
     return parser
 
 
-def lock(prog: str, argv: list[str], manager: BuildEnvManager, requirements: RequirementSpec) -> NoReturn:
+def lock(prog: str, argv: list[str], manager: BuildEnvManager, project: Project) -> NoReturn:
+    from kraken.wrapper.buildenv import BuildEnvType
+
     parser = _get_lock_argument_parser(prog)
     parser.parse_args(argv)
 
@@ -92,17 +94,19 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, requirements: Req
 
     environment = manager.get_environment()
     distributions = environment.get_installed_distributions()
-    lockfile, extra_distributions = calculate_lockfile(requirements, distributions)
-    extra_distributions.discard("pip")  # We'll always have that in a virtual env.
+    lockfile, extra_distributions = calculate_lockfile(project.requirements, distributions)
+
+    if environment.get_type() == BuildEnvType.VENV:
+        extra_distributions.discard("pip")  # We'll always have that in a virtual env.
 
     if extra_distributions:
         eprint("found extra distributions in build enviroment:", ", ".join(extra_distributions))
 
-    had_lockfile = Path(LOCK_FILENAME).exists()
-    lockfile.write_to(Path(LOCK_FILENAME))
+    had_lockfile = project.lockfile_path.exists()
+    lockfile.write_to(project.lockfile_path)
     manager.set_locked(lockfile)
 
-    eprint("lock file", "updated" if had_lockfile else "created", f"({LOCK_FILENAME})")
+    eprint("lock file", "updated" if had_lockfile else "created", f"({project.lockfile_path})")
     sys.exit(0)
 
 
@@ -170,11 +174,9 @@ def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
     sys.exit(0)
 
 
-def _print_env_status(
-    manager: BuildEnvManager,
-    requirements: RequirementSpec,
-    lockfile: Lockfile | None,
-) -> None:
+def _print_env_status(manager: BuildEnvManager, project: Project) -> None:
+    """Print the status of the environent as a nicely formatted table."""
+
     from kraken.util.asciitable import AsciiTable
     from kraken.util.json import dt2json
 
@@ -182,13 +184,13 @@ def _print_env_status(
 
     table = AsciiTable()
     table.headers = ["Key", "Source", "Value"]
-    table.rows.append(("Requirements", BUILDSCRIPT_FILENAME, requirements.to_hash(hash_algorithm)))
-    if lockfile:
-        table.rows.append(("Lockfile", LOCK_FILENAME, "-"))
-        table.rows.append(("  Requirements hash", "", lockfile.requirements.to_hash(hash_algorithm)))
-        table.rows.append(("  Pinned hash", "", lockfile.to_pinned_requirement_spec().to_hash(hash_algorithm)))
+    table.rows.append(("Requirements", str(project.requirements_path), project.requirements.to_hash(hash_algorithm)))
+    if project.lockfile:
+        table.rows.append(("Lockfile", str(project.lockfile_path), "-"))
+        table.rows.append(("  Requirements hash", "", project.lockfile.requirements.to_hash(hash_algorithm)))
+        table.rows.append(("  Pinned hash", "", project.lockfile.to_pinned_requirement_spec().to_hash(hash_algorithm)))
     else:
-        table.rows.append(("Lockfile", LOCK_FILENAME, "n/a"))
+        table.rows.append(("Lockfile", str(project.lockfile_path), "n/a"))
     if manager.exists():
         metadata = manager.get_metadata()
         environment = manager.get_environment()
@@ -203,8 +205,7 @@ def _print_env_status(
 
 def _ensure_installed(
     manager: BuildEnvManager,
-    requirements: RequirementSpec,
-    lockfile: Lockfile | None,
+    project: Project,
     reinstall: bool,
     upgrade: bool,
     env_type: BuildEnvType | None = None,
@@ -239,26 +240,25 @@ def _ensure_installed(
 
     if not install and exists:
         metadata = manager.get_metadata()
-        if lockfile and metadata.requirements_hash != lockfile.to_pinned_requirement_spec().to_hash(
+        if project.lockfile and metadata.requirements_hash != project.lockfile.to_pinned_requirement_spec().to_hash(
             metadata.hash_algorithm
         ):
             install = True
             operation = "re-initializing"
             reason = "outdated compared to lockfile"
-        if not lockfile and metadata.requirements_hash != requirements.to_hash(metadata.hash_algorithm):
+        if not project.lockfile and metadata.requirements_hash != project.requirements.to_hash(metadata.hash_algorithm):
             install = True
             operation = "re-initializing"
             reason = "outdated compared to requirements"
 
     if install:
-        if not lockfile or upgrade:
+        if not project.lockfile or upgrade:
             source_name = "requirements"
-            source = requirements
+            source = project.requirements
             transitive = True
         else:
             source_name = "lock file"
-            source = lockfile.to_pinned_requirement_spec()
-            lockfile = None
+            source = project.lockfile.to_pinned_requirement_spec()
             transitive = False
 
         env_type = env_type or manager.get_environment().get_type()
@@ -280,75 +280,116 @@ def _ensure_installed(
         eprint(operation, "build environment of type", current_type.name)
 
 
+class Project(NamedTuple):
+    requirements_path: Path
+    requirements: RequirementSpec
+    lockfile_path: Path
+    lockfile: Lockfile | None
+
+
+def load_project(
+    requirements_path: Path = Path(BUILDSCRIPT_FILENAME),
+    lockfile_path: Path = Path(LOCK_FILENAME),
+    build_support_dir: str = BUILD_SUPPORT_DIRECTORY,
+    outdated_check: bool = True,
+) -> Project:
+    """
+    This method loads the details about the current Kraken project from the current working directory
+    and returns it. The project information includes the requirements for the project as well as the
+    parsed lockfile, if present.
+
+    :param requirements_path: The file to parse the requirements from the header.
+    :param lockfile_path: The file to parse as a lockfile, if present.
+    :param build_support_dir: The directory that is supposed to be always present in the
+        :attr:`RequirementSpec.pythonpath`.
+    :param outdated_check: If enabled, performs a check to see if the requirements that the lockfile was
+        generated with is outdated compared to the project requirements.
+    """
+
+    from kraken.util.requirements import parse_requirements_from_python_script
+
+    from kraken.wrapper.lockfile import Lockfile
+
+    if not requirements_path.is_file():
+        print(f'error: no "{requirements_path}" in current directory', file=sys.stderr)
+        sys.exit(1)
+
+    # Load requirement spec from build script.
+    logger.debug('loading requirements from "%s"', requirements_path)
+    with requirements_path.open() as fp:
+        requirements = parse_requirements_from_python_script(fp)
+        if not requirements.requirements:
+            print(f'error: no requirements in "{requirements_path}"')
+            sys.exit(1)
+        if build_support_dir not in requirements.pythonpath:
+            requirements = requirements.with_pythonpath([build_support_dir])
+
+    # Load lockfile if it exists.
+    if lockfile_path.is_file():
+        logger.debug('loading lockfile from "%s"', lockfile_path)
+        lockfile = Lockfile.from_path(lockfile_path)
+        if outdated_check and lockfile and lockfile.requirements != requirements:
+            eprint(f'lock file "{lockfile_path}" is outdated compared to requirements in "{requirements_path}"')
+            eprint("consider updating the lock file with `krakenw --upgrade lock`")
+    else:
+        lockfile = None
+
+    return Project(requirements_path, requirements, lockfile_path, lockfile)
+
+
 def main() -> NoReturn:
     from kraken.cli.option_sets import LoggingOptions
-    from kraken.util.requirements import parse_requirements_from_python_script
 
     from kraken.wrapper.buildenv import BuildEnvManager
     from kraken.wrapper.config import DEFAULT_CONFIG_PATH, AuthModel, ConfigFile
-    from kraken.wrapper.lockfile import Lockfile
     from kraken.wrapper.option_sets import EnvOptions
 
     parser = _get_argument_parser()
     args = parser.parse_args()
-    LoggingOptions.collect(args).init_logging()
+    logging_options = LoggingOptions.collect(args)
+    logging_options.init_logging()
     env_options = EnvOptions.collect(args)
+    config = ConfigFile(DEFAULT_CONFIG_PATH)
 
     if not args.cmd and not env_options.any():
         parser.print_usage()
         sys.exit(0)
 
-    if not Path(BUILDSCRIPT_FILENAME).is_file():
-        print(f'error: no "{BUILDSCRIPT_FILENAME}" in current directory', file=sys.stderr)
-        sys.exit(1)
+    # Convert the arguments we defined in the argument parser to the actual subcommand that we want
+    # delegated.
+    cmd: str | None = args.cmd[0] if args.cmd else None
+    argv: list[str] = args.cmd[1:] + args.args
 
-    # Load requirement spec from build script.
-    logger.debug('loading requirements from "%s"', BUILDSCRIPT_FILENAME)
-    with Path(BUILDSCRIPT_FILENAME).open() as fp:
-        requirements = parse_requirements_from_python_script(fp)
-        if not requirements.requirements:
-            print(f'error: no requirements in "{BUILDSCRIPT_FILENAME}"')
-            sys.exit(1)
-        if BUILD_SUPPORT_DIRECTORY not in requirements.pythonpath:
-            requirements = requirements.with_pythonpath([BUILD_SUPPORT_DIRECTORY])
+    if cmd in ("a", "auth"):
+        # The `auth` comand does not require any current project information, it can be used globally.
+        auth(f"{parser.prog} auth", argv, AuthModel(config))
 
-    # Load lockfile if it exists.
-    if Path(LOCK_FILENAME).is_file():
-        logger.debug('loading lockfile from "%s"', LOCK_FILENAME)
-        lockfile = Lockfile.from_path(Path(LOCK_FILENAME))
-        if not env_options.upgrade and lockfile.requirements != requirements:
-            eprint(f'lock file "{LOCK_FILENAME}" is outdated compared to requirements in "{BUILDSCRIPT_FILENAME}"')
-            eprint("consider updating the lock file with `krakenw --upgrade lock`")
-    else:
-        lockfile = None
-
-    config = ConfigFile(DEFAULT_CONFIG_PATH)
+    # The project details and build environment manager are relevant for any command that we are delegating.
+    # This includes the built-in `lock` command.
+    project = load_project(outdated_check=not env_options.upgrade)
     manager = BuildEnvManager(BUILDENV_PATH, AuthModel(config))
 
+    # Execute environment operations before delegating the command.
+
+    is_lock_command = cmd in ("lock", "l")
+
     if env_options.status:
-        if args.cmd or args.args:
+        if cmd or argv:
             eprint("error: --status option must be used alone")
             sys.exit(1)
-        _print_env_status(manager, requirements, lockfile)
+        _print_env_status(manager, project)
         sys.exit(0)
 
     if env_options.uninstall:
-        if args.cmd or args.args:
+        if cmd or argv:
             eprint("error: --uninstall option must be used alone")
             sys.exit(1)
         manager.remove()
         sys.exit(0)
-
-    cmd: str | None = args.cmd[0] if args.cmd else None
-    argv: list[str] = args.cmd[1:] + args.args
-
-    is_special_command = cmd in ("a", "auth", "lock", "l")
-
-    if env_options.any() or not is_special_command:
+    if env_options.any() or not is_lock_command:
         _ensure_installed(
             manager,
-            requirements,
-            lockfile,
+            project,
             env_options.reinstall or (os.getenv("KRAKENW_REINSTALL") == "1"),
             env_options.upgrade,
             env_options.use,
@@ -359,10 +400,7 @@ def main() -> NoReturn:
         sys.exit(0)
 
     elif cmd in ("l", "lock"):
-        lock(f"{parser.prog} lock", argv, manager, requirements)
-
-    elif cmd in ("a", "auth"):
-        auth(f"{parser.prog} auth", argv, AuthModel(config))
+        lock(f"{parser.prog} lock", argv, manager, project)
 
     else:
         environment = manager.get_environment()
