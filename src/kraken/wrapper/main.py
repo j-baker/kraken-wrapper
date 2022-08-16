@@ -161,11 +161,13 @@ def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
             table.print()
     elif args.username:
         if args.password_stdin:
-            password = getpass.getpass(f"Password for {args.host}:")
+            password = sys.stdin.readline().strip()
+            if not password:
+                parser.error("no password provided via stdin")
         elif args.password:
             password = args.password
         else:
-            parser.error("specify -p,--password or --password-stdin")
+            password = getpass.getpass(f"Password for {args.host}:")
         auth.set_credentials(args.host, args.username, password)
     else:
         parser.print_usage()
