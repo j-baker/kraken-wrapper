@@ -66,3 +66,51 @@ class EnvOptions:
 
     def any(self) -> bool:
         return bool(self.status or self.upgrade or self.reinstall or self.uninstall or self.use)
+
+
+@dataclasses.dataclass(frozen=True)
+class AuthOptions:
+    host: str
+    username: str | None
+    password: str | None
+    password_stdin: bool
+    remove: bool
+    list: bool
+
+    @staticmethod
+    def add_to_parser(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument("host", nargs="?", help="the host to add the credentials for")
+        parser.add_argument(
+            "-u",
+            "--username",
+            help="the username to use when accessing resources on the given host",
+        )
+        parser.add_argument(
+            "-p",
+            "--password",
+            help="the password to use when accessing resources on the given host (use --password-stdin when possible)",
+        )
+        parser.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
+        parser.add_argument(
+            "-r",
+            "--remove",
+            action="store_true",
+            help="remove credentials for the given host",
+        )
+        parser.add_argument(
+            "-l",
+            "--list",
+            action="store_true",
+            help="list configured credentials for the given host",
+        )
+
+    @classmethod
+    def collect(cls, args: argparse.Namespace) -> AuthOptions:
+        return cls(
+            host=args.host,
+            username=args.username,
+            password=args.password,
+            password_stdin=args.password_stdin,
+            remove=args.remove,
+            list=args.list,
+        )

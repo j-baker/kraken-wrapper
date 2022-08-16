@@ -19,6 +19,7 @@ from kraken.util.helpers import NotSet, not_none
 if TYPE_CHECKING:
     from kraken.util.requirements import RequirementSpec
 
+    from kraken.wrapper.config import AuthModel
     from kraken.wrapper.lockfile import Distribution, Lockfile
 
 logger = logging.getLogger(__name__)
@@ -286,6 +287,7 @@ class BuildEnvManager:
     def __init__(
         self,
         path: Path,
+        auth: AuthModel,
         default_type: BuildEnvType = BuildEnvType.VENV,
         default_hash_algorithm: str = "sha256",
     ) -> None:
@@ -296,9 +298,24 @@ class BuildEnvManager:
         ), f"hash algoritm {default_hash_algorithm!r} is not available"
 
         self._path = path
+        self._auth = auth
         self._metadata_store = BuildEnvMetadataStore(with_name(path, path.name + ".meta"))
         self._default_type = default_type
         self._default_hash_algorithm = default_hash_algorithm
+
+    def _inject_auth(self, url: str) -> str:
+        from urllib.parse import quote, urlparse, urlunparse
+
+        parsed_url = urlparse(url)
+        credentials = self._auth.get_credentials(parsed_url.netloc)
+        if credentials is None:
+            return url
+
+        logger.info('Injecting username and password into index url "%s"', url)
+        domain = parsed_url.netloc.rpartition("@")[-1]
+        parsed_url = parsed_url._replace(netloc=f"{quote(credentials.username)}:{quote(credentials.password)}@{domain}")
+        url = urlunparse(parsed_url)
+        return url
 
     def exists(self) -> bool:
         if self._metadata_store.get() is None:
@@ -312,7 +329,10 @@ class BuildEnvManager:
         safe_rmpath(self.get_environment().get_path())
 
     def install(
-        self, requirements: RequirementSpec, env_type: BuildEnvType | None = None, transitive: bool = True
+        self,
+        requirements: RequirementSpec,
+        env_type: BuildEnvType | None = None,
+        transitive: bool = True,
     ) -> None:
         """
         :param requirements: The requirements to build the environment with.
@@ -321,9 +341,20 @@ class BuildEnvManager:
             build environment installer does not need to resolve transitve dependencies.
         """
 
+        from kraken.util.requirements import RequirementSpec
+
         if env_type is None:
             metadata = self._metadata_store.get()
             env_type = metadata.environment_type if metadata else self._default_type
+
+        # Inject credentials into the requirements.
+        requirements = RequirementSpec(
+            requirements=requirements.requirements,
+            index_url=self._inject_auth(requirements.index_url) if requirements.index_url else None,
+            extra_index_urls=tuple(self._inject_auth(url) for url in requirements.extra_index_urls),
+            interpreter_constraint=requirements.interpreter_constraint,
+            pythonpath=requirements.pythonpath,
+        )
 
         env = _get_environment_for_type(env_type, self._path)
         env.build(requirements, transitive)

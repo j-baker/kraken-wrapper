@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from kraken.util.requirements import RequirementSpec
 
     from kraken.wrapper.buildenv import BuildEnvManager, BuildEnvType
+    from kraken.wrapper.config import AuthModel
     from kraken.wrapper.lockfile import Lockfile
 
 BUILDENV_PATH = Path("build/.kraken/venv")
@@ -59,7 +60,7 @@ def _get_argument_parser() -> argparse.ArgumentParser:
     # NOTE (@NiklasRosenstein): If we combine "+" with remainder, we get options passed after the `cmd`
     #       passed directly into `args` without argparse treating it like an option. This is not the case
     #       when using `nargs=1` for `cmd`.
-    parser.add_argument("cmd", nargs="*", metavar="cmd", help="{lock,l} or a kraken command")
+    parser.add_argument("cmd", nargs="*", metavar="cmd", help="{a,auth,lock,l} or a kraken command")
     parser.add_argument("args", nargs=argparse.REMAINDER, help="additional arguments")
     return parser
 
@@ -102,6 +103,70 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, requirements: Req
     manager.set_locked(lockfile)
 
     eprint("lock file", "updated" if had_lockfile else "created", f"({LOCK_FILENAME})")
+    sys.exit(0)
+
+
+def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
+    from kraken.util.text import inline_text
+
+    from kraken.wrapper.option_sets import AuthOptions
+
+    parser = argparse.ArgumentParser(
+        prog,
+        formatter_class=_FormatterClass,
+        description=inline_text(
+            """
+            Configure the credentials to use when accessing PyPI packages from the given host.
+            The password will be stored in the system keychain.
+            """
+        ),
+    )
+    AuthOptions.add_to_parser(parser)
+    return parser
+
+
+def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
+    import getpass
+
+    from kraken.util.asciitable import AsciiTable
+
+    from kraken.wrapper.option_sets import AuthOptions
+
+    parser = _get_auth_argument_parser(prog)
+    args = AuthOptions.collect(parser.parse_args(argv))
+
+    if args.host and (":" in args.host or "/" in args.host):
+        parser.error(f"invalid host name: {args.host}")
+    if args.password and args.password_stdin:
+        parser.error("cannot use -p,--password and --password-stdin concurrently")
+
+    if args.remove:
+        if args.list or args.username or args.password or args.password_stdin:
+            parser.error("incompatible arguments")
+        if not args.host:
+            parser.error("missing argument `host`")
+        auth.delete_credentials(args.host)
+    elif args.list:
+        if args.remove or args.host or args.username or args.password or args.password_stdin:
+            parser.error("incompatible arguments")
+        table = AsciiTable()
+        table.headers = ["Host", "Username", "Password"]
+        for host, username, password in auth.list_credentials():
+            table.rows.append((host, username, password))
+        if table.rows:
+            table.print()
+    elif args.username:
+        if args.password_stdin:
+            password = getpass.getpass(f"Password for {args.host}:")
+        elif args.password:
+            password = args.password
+        else:
+            parser.error("specify -p,--password or --password-stdin")
+        auth.set_credentials(args.host, args.username, password)
+    else:
+        parser.print_usage()
+        sys.exit(1)
+
     sys.exit(0)
 
 
@@ -220,6 +285,7 @@ def main() -> NoReturn:
     from kraken.util.requirements import parse_requirements_from_python_script
 
     from kraken.wrapper.buildenv import BuildEnvManager
+    from kraken.wrapper.config import DEFAULT_CONFIG_PATH, AuthModel, ConfigFile
     from kraken.wrapper.lockfile import Lockfile
     from kraken.wrapper.option_sets import EnvOptions
 
@@ -256,7 +322,8 @@ def main() -> NoReturn:
     else:
         lockfile = None
 
-    manager = BuildEnvManager(BUILDENV_PATH)
+    config = ConfigFile(DEFAULT_CONFIG_PATH)
+    manager = BuildEnvManager(BUILDENV_PATH, AuthModel(config))
 
     if env_options.status:
         if args.cmd or args.args:
@@ -275,9 +342,9 @@ def main() -> NoReturn:
     cmd: str | None = args.cmd[0] if args.cmd else None
     argv: list[str] = args.cmd[1:] + args.args
 
-    is_lock_command = cmd in ("lock", "l")
+    is_special_command = cmd in ("a", "auth", "lock", "l")
 
-    if env_options.any() or not is_lock_command:
+    if env_options.any() or not is_special_command:
         _ensure_installed(
             manager,
             requirements,
@@ -291,8 +358,11 @@ def main() -> NoReturn:
         assert not argv
         sys.exit(0)
 
-    elif is_lock_command:
+    elif cmd in ("l", "lock"):
         lock(f"{parser.prog} lock", argv, manager, requirements)
+
+    elif cmd in ("a", "auth"):
+        auth(f"{parser.prog} auth", argv, AuthModel(config))
 
     else:
         environment = manager.get_environment()
