@@ -41,7 +41,7 @@ class ConfigFile(MutableMapping[str, Any]):
         return iter(self._get_data())
 
     def save(self) -> None:
-        self.path.parent.mkdir(exist_ok=True)
+        self.path.parent.mkdir(exist_ok=True, parents=True)
         self.path.write_text(tomli_w.dumps(self._get_data()))
 
 
