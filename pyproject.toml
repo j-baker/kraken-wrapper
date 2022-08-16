@@ -26,6 +26,7 @@ pex = "^2.1.103"
 tomli = "^2.0.1"
 tomli_w = "^1.0.0"
 setuptools = ">=33.0.0"
+keyring = "^23.8.2"
 
 [tool.poetry.dev-dependencies]
 black = "*"
