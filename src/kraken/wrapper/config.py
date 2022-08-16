@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Iterator, MutableMapping, NamedTuple
 
 import keyring
+import keyring.backends.fail
 import tomli
 import tomli_w
 
@@ -46,6 +47,9 @@ class ConfigFile(MutableMapping[str, Any]):
 
 
 class AuthModel:
+    """Provides an interface to store credentials safely in the system keyring. If keyring backend is available,
+    the credentials are stored in the config file instead."""
+
     class CredentialsWithHost(NamedTuple):
         host: str
         username: str
@@ -57,6 +61,7 @@ class AuthModel:
 
     def __init__(self, config: ConfigFile) -> None:
         self._config = config
+        self._has_keyring = not isinstance(keyring.get_keyring(), keyring.backends.fail.Keyring)
 
     def get_credentials(self, host: str) -> Credentials | None:
         auth = self._config.get("auth", {})
@@ -65,18 +70,29 @@ class AuthModel:
         username = auth[host].get("username")
         if not username:
             return None
-        password = keyring.get_credential(host, username)
-        if not password:
-            return None
-        return self.Credentials(username, password.password)
+        password = auth[host].get("password")
+        if password is not None:
+            return self.Credentials(username, password)
+        if self._has_keyring:
+            password = keyring.get_credential(host, username)
+            if not password:
+                return None
+            return self.Credentials(username, password.password)
+        return None
 
     def set_credentials(self, host: str, username: str, password: str) -> None:
         auth = self._config.setdefault("auth", {})
         auth[host] = {"username": username}
-        logger.info("saving username for %s in %s", host, self._config.path)
-        self._config.save()
-        logger.info("saving password for %s in keyring", host)
-        keyring.set_password(host, username, password)
+        if not self._has_keyring:
+            auth[host]["password"] = password
+            logger.warning("no keyring backend available, password will be stored in plain text")
+            logger.info("saving username and password for %s in %s", host, self._config.path)
+            self._config.save()
+        else:
+            logger.info("saving username for %s in %s", host, self._config.path)
+            self._config.save()
+            logger.info("saving password for %s in keyring", host)
+            keyring.set_password(host, username, password)
 
     def delete_credentials(self, host: str) -> None:
         auth = self._config.get("auth")
@@ -85,7 +101,7 @@ class AuthModel:
             logger.info("deleting username for %s from %s", host, self._config.path)
             del auth[host]
             self._config.save()
-            if username:
+            if username and self._has_keyring:
                 logger.info("deleting password for %s from keyring", host)
                 try:
                     keyring.delete_password(host, username)
