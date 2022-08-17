@@ -31,9 +31,9 @@ eprint = partial(print, file=sys.stderr)
 
 
 def _get_argument_parser() -> argparse.ArgumentParser:
-    from termcolor import colored
     from kraken.core.cli.option_sets import LoggingOptions
     from kraken.core.util.text import inline_text
+    from termcolor import colored
 
     from kraken.wrapper.option_sets import EnvOptions
 
@@ -66,8 +66,8 @@ def _get_argument_parser() -> argparse.ArgumentParser:
 
 
 def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
-    from termcolor import colored
     from kraken.core.util.text import inline_text
+    from termcolor import colored
 
     parser = argparse.ArgumentParser(
         prog,
