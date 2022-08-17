@@ -21,7 +21,7 @@ keywords = []
 
 [tool.poetry.dependencies]
 python = "^3.7"
-kraken-core = "^0.9.0"
+kraken-core = "^0.9.1"
 pex = "^2.1.103"
 tomli = "^2.0.1"
 tomli_w = "^1.0.0"

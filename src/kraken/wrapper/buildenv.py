@@ -259,6 +259,7 @@ class VenvBuildEnv(BuildEnv):
         # Must enable transitive resolution because lock files are not currently cross platform (see kraken-wrapper#2).
         # if not transitive:
         #     command += ["--no-deps"]
+        # TODO (@NiklasRosenstein): Handle requirements interpreter constraint (see kraken-wrapper#5).
         command += requirements.to_args()
         logger.debug("Installing into build environment with Pip: %s", " ".join(command))
         subprocess.check_call(command)

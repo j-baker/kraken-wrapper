@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 BUILDENV_PATH = Path("build/.kraken/venv")
 BUILDSCRIPT_FILENAME = ".kraken.py"
 BUILD_SUPPORT_DIRECTORY = "build-support"
+DEFAULT_INTERPRETER_CONSTRAINT = ">=3.7"
 LOCK_FILENAME = ".kraken.lock"
 _FormatterClass = lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=60, width=120)  # noqa: 731
 logger = logging.getLogger(__name__)
@@ -325,6 +326,8 @@ def load_project(
             sys.exit(1)
         if build_support_dir not in requirements.pythonpath:
             requirements = requirements.with_pythonpath([build_support_dir])
+        if not requirements.interpreter_constraint:
+            requirements = requirements.replace(interpreter_constraint=DEFAULT_INTERPRETER_CONSTRAINT)
 
     # Load lockfile if it exists.
     if lockfile_path.is_file():

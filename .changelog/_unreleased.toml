@@ -1,0 +1,5 @@
+[[entries]]
+id = "4e2cc2dc-696c-4028-8992-fbd2a36bf395"
+type = "improvement"
+description = "add default interpreter constraints to requriements (`>=3.7`), and add note that the Pip venv installer still needs to respect that option"
+author = "@NiklasRosenstein"
