@@ -14,7 +14,7 @@ from . import __version__
 from .lockfile import calculate_lockfile
 
 if TYPE_CHECKING:
-    from kraken.util.requirements import RequirementSpec
+    from kraken.core.util.requirements import RequirementSpec
 
     from kraken.wrapper.buildenv import BuildEnvManager, BuildEnvType
     from kraken.wrapper.config import AuthModel
@@ -31,9 +31,9 @@ eprint = partial(print, file=sys.stderr)
 
 
 def _get_argument_parser() -> argparse.ArgumentParser:
-    from kraken._vendor.termcolor import colored
-    from kraken.cli.option_sets import LoggingOptions
-    from kraken.util.text import inline_text
+    from termcolor import colored
+    from kraken.core.cli.option_sets import LoggingOptions
+    from kraken.core.util.text import inline_text
 
     from kraken.wrapper.option_sets import EnvOptions
 
@@ -66,8 +66,8 @@ def _get_argument_parser() -> argparse.ArgumentParser:
 
 
 def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
-    from kraken._vendor.termcolor import colored
-    from kraken.util.text import inline_text
+    from termcolor import colored
+    from kraken.core.util.text import inline_text
 
     parser = argparse.ArgumentParser(
         prog,
@@ -111,7 +111,7 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, project: Project)
 
 
 def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
-    from kraken.util.text import inline_text
+    from kraken.core.util.text import inline_text
 
     from kraken.wrapper.option_sets import AuthOptions
 
@@ -132,7 +132,7 @@ def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
 def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
     import getpass
 
-    from kraken.util.asciitable import AsciiTable
+    from kraken.core.util.asciitable import AsciiTable
 
     from kraken.wrapper.option_sets import AuthOptions
 
@@ -179,8 +179,8 @@ def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
 def _print_env_status(manager: BuildEnvManager, project: Project) -> None:
     """Print the status of the environent as a nicely formatted table."""
 
-    from kraken.util.asciitable import AsciiTable
-    from kraken.util.json import dt2json
+    from kraken.core.util.asciitable import AsciiTable
+    from kraken.core.util.json import dt2json
 
     hash_algorithm = manager.get_hash_algorithm()
 
@@ -308,7 +308,7 @@ def load_project(
         generated with is outdated compared to the project requirements.
     """
 
-    from kraken.util.requirements import parse_requirements_from_python_script
+    from kraken.core.util.requirements import parse_requirements_from_python_script
 
     from kraken.wrapper.lockfile import Lockfile
 
@@ -340,7 +340,7 @@ def load_project(
 
 
 def main() -> NoReturn:
-    from kraken.cli.option_sets import LoggingOptions
+    from kraken.core.cli.option_sets import LoggingOptions
 
     from kraken.wrapper.buildenv import BuildEnvManager
     from kraken.wrapper.config import DEFAULT_CONFIG_PATH, AuthModel, ConfigFile
