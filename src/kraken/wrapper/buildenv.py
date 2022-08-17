@@ -222,7 +222,7 @@ class VenvBuildEnv(BuildEnv):
 
     def get_installed_distributions(self) -> list[Distribution]:
         python = self._venv.get_bin("python")
-        return _get_installed_distributions([str(python), "-m", "kraken.cli.main"])
+        return _get_installed_distributions([str(python), "-m", "kraken.core.cli.main"])
 
     def build(self, requirements: RequirementSpec, transitive: bool) -> None:
         from kraken.core.util.fs import safe_rmpath
@@ -278,7 +278,7 @@ class VenvBuildEnv(BuildEnv):
         from kraken.core.util.krakenw import KrakenwEnv
 
         python = self._venv.get_bin("python")
-        command = [str(python), "-m", "kraken.cli.main", *argv]
+        command = [str(python), "-m", "kraken.core.cli.main", *argv]
         env = {**os.environ, **KrakenwEnv(self._path, self.get_type().name).to_env_vars()}
         sys.exit(subprocess.call(command, env=env))
 
