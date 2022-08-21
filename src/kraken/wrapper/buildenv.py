@@ -12,7 +12,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, NoReturn, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterator, NoReturn, Sequence
 
 from kraken.core.util.helpers import NotSet, not_none
 
@@ -23,6 +23,13 @@ if TYPE_CHECKING:
     from kraken.wrapper.lockfile import Distribution, Lockfile
 
 logger = logging.getLogger(__name__)
+
+KRAKEN_MAIN_IMPORT_SNIPPET = """
+try:
+    from kraken.core.cli.main import main  # >= 0.9.0
+except ImportError:
+    from kraken.cli.main import main  # < 0.9.0
+""".strip()
 
 
 class BuildEnv(abc.ABC):
@@ -188,7 +195,9 @@ class PexBuildEnv(BuildEnv):
         with self.activate():
             import logging
 
-            from kraken.core.cli.main import main
+            scope: dict[str, Any] = {}
+            exec(KRAKEN_MAIN_IMPORT_SNIPPET, scope)
+            main: Callable[[str, Sequence[str]], NoReturn] = scope["main"]
 
             # We need to un-initialize the logger such that kraken-core can re-initialize it.
             for handler in logging.root.handlers[:]:
@@ -201,7 +210,8 @@ class PexBuildEnv(BuildEnv):
             finally:
                 os.environ.clear()
                 os.environ.update(env)
-        assert False
+
+        assert False, "should not be reached"
 
 
 class VenvBuildEnv(BuildEnv):
@@ -222,7 +232,7 @@ class VenvBuildEnv(BuildEnv):
 
     def get_installed_distributions(self) -> list[Distribution]:
         python = self._venv.get_bin("python")
-        return _get_installed_distributions([str(python), "-m", "kraken.core.cli.main"])
+        return _get_installed_distributions([str(python), "-c", f"{KRAKEN_MAIN_IMPORT_SNIPPET}\nmain()"])
 
     def build(self, requirements: RequirementSpec, transitive: bool) -> None:
         from kraken.core.util.fs import safe_rmpath
@@ -279,7 +289,7 @@ class VenvBuildEnv(BuildEnv):
         from kraken.core.util.krakenw import KrakenwEnv
 
         python = self._venv.get_bin("python")
-        command = [str(python), "-m", "kraken.core.cli.main", *argv]
+        command = [str(python), "-c", f"{KRAKEN_MAIN_IMPORT_SNIPPET}\nmain()", *argv]
         env = {**os.environ, **KrakenwEnv(self._path, self.get_type().name).to_env_vars()}
         sys.exit(subprocess.call(command, env=env))
 
