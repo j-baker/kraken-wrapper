@@ -4,7 +4,6 @@ import abc
 import contextlib
 import dataclasses
 import datetime
-import enum
 import hashlib
 import json
 import logging
@@ -14,11 +13,18 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, NoReturn, Sequence
 
-from kraken.core.util.helpers import NotSet, not_none
+from kraken.common import (
+    KrakenEnvironmentType,
+    NotSet,
+    RequirementSpec,
+    datetime_to_iso8601,
+    iso8601_to_datetime,
+    not_none,
+    lazy_str,
+    safe_rmpath,
+)
 
 if TYPE_CHECKING:
-    from kraken.core.util.requirements import RequirementSpec
-
     from kraken.wrapper.config import AuthModel
     from kraken.wrapper.lockfile import Distribution, Lockfile
 
@@ -36,7 +42,7 @@ class BuildEnv(abc.ABC):
     """Interface for the build environment."""
 
     @abc.abstractmethod
-    def get_type(self) -> BuildEnvType:
+    def get_type(self) -> KrakenEnvironmentType:
         """Return the type of build environment that this is."""
 
     @abc.abstractmethod
@@ -58,36 +64,25 @@ class BuildEnv(abc.ABC):
         :param argv: The arguments to pass to the kraken cli (without the "kraken" command name itself)."""
 
 
-class BuildEnvType(enum.Enum):
-    PEX_ZIPAPP = enum.auto()
-    PEX_PACKED = enum.auto()
-    PEX_LOOSE = enum.auto()
-    VENV = enum.auto()
-
-
 @dataclasses.dataclass(frozen=True)
 class BuildEnvMetadata:
     created_at: datetime.datetime
-    environment_type: BuildEnvType
+    environment_type: KrakenEnvironmentType
     requirements_hash: str
     hash_algorithm: str
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> BuildEnvMetadata:
-        from kraken.core.util.json import json2dt
-
         return cls(
-            created_at=json2dt(data["created_at"]),
-            environment_type=BuildEnvType[data["environment_type"]],
+            created_at=iso8601_to_datetime(data["created_at"]),
+            environment_type=KrakenEnvironmentType[data["environment_type"]],
             requirements_hash=data["requirements_hash"],
             hash_algorithm=data["hash_algorithm"],
         )
 
     def to_json(self) -> dict[str, Any]:
-        from kraken.core.util.json import dt2json
-
         return {
-            "created_at": dt2json(self.created_at),
+            "created_at": datetime_to_iso8601(self.created_at),
             "environment_type": self.environment_type.name,
             "requirements_hash": self.requirements_hash,
             "hash_algorithm": self.hash_algorithm,
@@ -116,9 +111,9 @@ class BuildEnvMetadataStore:
 
 
 class PexBuildEnv(BuildEnv):
-    STYLES = (BuildEnvType.PEX_ZIPAPP, BuildEnvType.PEX_PACKED, BuildEnvType.PEX_LOOSE)
+    STYLES = (KrakenEnvironmentType.PEX_ZIPAPP, KrakenEnvironmentType.PEX_PACKED, KrakenEnvironmentType.PEX_LOOSE)
 
-    def __init__(self, style: BuildEnvType, path: Path) -> None:
+    def __init__(self, style: KrakenEnvironmentType, path: Path) -> None:
         assert style in self.STYLES
         self._style = style
         self._path = path
@@ -150,7 +145,7 @@ class PexBuildEnv(BuildEnv):
     def get_path(self) -> Path:
         return self._path
 
-    def get_type(self) -> BuildEnvType:
+    def get_type(self) -> KrakenEnvironmentType:
         return self._style
 
     def get_installed_distributions(self) -> list[Distribution]:
@@ -158,8 +153,6 @@ class PexBuildEnv(BuildEnv):
 
     def build(self, requirements: RequirementSpec, transitive: bool) -> None:
         import pprint
-
-        from kraken.core.util.text import lazy_str
 
         from kraken.wrapper.pex import PEXBuildConfig, PEXLayout
 
@@ -175,9 +168,9 @@ class PexBuildEnv(BuildEnv):
         )
 
         layout = {
-            BuildEnvType.PEX_ZIPAPP: PEXLayout.ZIPAPP,
-            BuildEnvType.PEX_PACKED: PEXLayout.PACKED,
-            BuildEnvType.PEX_LOOSE: PEXLayout.LOOSE,
+            KrakenEnvironmentType.PEX_ZIPAPP: PEXLayout.ZIPAPP,
+            KrakenEnvironmentType.PEX_PACKED: PEXLayout.PACKED,
+            KrakenEnvironmentType.PEX_LOOSE: PEXLayout.LOOSE,
         }[self._style]
 
         logger.debug("PEX build configuration is %s", lazy_str(lambda: pprint.pformat(config)))
@@ -190,8 +183,6 @@ class PexBuildEnv(BuildEnv):
         builder.build(str(self._path), layout=layout)
 
     def dispatch_to_kraken_cli(self, argv: list[str]) -> NoReturn:
-        from kraken.core.util.krakenw import KrakenwEnv
-
         with self.activate():
             import logging
 
@@ -203,13 +194,14 @@ class PexBuildEnv(BuildEnv):
             for handler in logging.root.handlers[:]:
                 logging.root.removeHandler(handler)
 
-            env = os.environ.copy()
-            os.environ.update(KrakenwEnv(self._path, self.get_type().name).to_env_vars())
+            env_backup = os.environ.copy()
+            self.get_type().set(os.environ)
+
             try:
                 main("krakenw", argv)
             finally:
                 os.environ.clear()
-                os.environ.update(env)
+                os.environ.update(env_backup)
 
         assert False, "should not be reached"
 
@@ -227,16 +219,14 @@ class VenvBuildEnv(BuildEnv):
     def get_path(self) -> Path:
         return self._path
 
-    def get_type(self) -> BuildEnvType:
-        return BuildEnvType.VENV
+    def get_type(self) -> KrakenEnvironmentType:
+        return KrakenEnvironmentType.VENV
 
     def get_installed_distributions(self) -> list[Distribution]:
         python = self._venv.get_bin("python")
         return _get_installed_distributions([str(python), "-c", f"{KRAKEN_MAIN_IMPORT_SNIPPET}\nmain()"])
 
     def build(self, requirements: RequirementSpec, transitive: bool) -> None:
-        from kraken.core.util.fs import safe_rmpath
-
         if not self._incremental and self._path.exists():
             logger.debug("Removing existing virtual environment at %s", self._path)
             safe_rmpath(self._path)
@@ -286,11 +276,10 @@ class VenvBuildEnv(BuildEnv):
             pth_file.unlink()
 
     def dispatch_to_kraken_cli(self, argv: list[str]) -> NoReturn:
-        from kraken.core.util.krakenw import KrakenwEnv
-
         python = self._venv.get_bin("python")
         command = [str(python), "-c", f"{KRAKEN_MAIN_IMPORT_SNIPPET}\nmain()", *argv]
-        env = {**os.environ, **KrakenwEnv(self._path, self.get_type().name).to_env_vars()}
+        env = os.environ.copy()
+        self.get_type().set(env)
         sys.exit(subprocess.call(command, env=env))
 
 
@@ -299,18 +288,16 @@ class BuildEnvManager:
         self,
         path: Path,
         auth: AuthModel,
-        default_type: BuildEnvType = BuildEnvType.VENV,
+        default_type: KrakenEnvironmentType = KrakenEnvironmentType.VENV,
         default_hash_algorithm: str = "sha256",
     ) -> None:
-        from kraken.core.util.path import with_name
-
         assert (
             default_hash_algorithm in hashlib.algorithms_available
         ), f"hash algoritm {default_hash_algorithm!r} is not available"
 
         self._path = path
         self._auth = auth
-        self._metadata_store = BuildEnvMetadataStore(with_name(path, path.name + ".meta"))
+        self._metadata_store = BuildEnvMetadataStore(path.parent / (path.name + ".meta"))
         self._default_type = default_type
         self._default_hash_algorithm = default_hash_algorithm
 
@@ -334,15 +321,13 @@ class BuildEnvManager:
         return self.get_environment().get_path().exists()
 
     def remove(self) -> None:
-        from kraken.core.util.fs import safe_rmpath
-
         safe_rmpath(self._metadata_store.path)
         safe_rmpath(self.get_environment().get_path())
 
     def install(
         self,
         requirements: RequirementSpec,
-        env_type: BuildEnvType | None = None,
+        env_type: KrakenEnvironmentType | None = None,
         transitive: bool = True,
     ) -> None:
         """
@@ -351,8 +336,6 @@ class BuildEnvManager:
         :param transitive: If set to `False`, it indicates that the *requirements* are fully resolved and the
             build environment installer does not need to resolve transitve dependencies.
         """
-
-        from kraken.core.util.requirements import RequirementSpec
 
         if env_type is None:
             metadata = self._metadata_store.get()
@@ -405,12 +388,10 @@ class BuildEnvManager:
         self._metadata_store.set(metadata)
 
 
-def _get_environment_for_type(environment_type: BuildEnvType, base_path: Path) -> BuildEnv:
-    from kraken.core.util.path import with_name
-
+def _get_environment_for_type(environment_type: KrakenEnvironmentType, base_path: Path) -> BuildEnv:
     if environment_type in PexBuildEnv.STYLES:
-        return PexBuildEnv(environment_type, with_name(base_path, base_path.name + ".pex"))
-    elif environment_type == BuildEnvType.VENV:
+        return PexBuildEnv(environment_type, base_path.parent / (base_path.name + ".pex"))
+    elif environment_type == KrakenEnvironmentType.VENV:
         return VenvBuildEnv(base_path, incremental=os.getenv("KRAKENW_INCREMENTAL") == "1")
     else:
         raise RuntimeError(f"unsupported environment type: {environment_type!r}")
