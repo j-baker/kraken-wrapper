@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from kraken.core.util.requirements import RequirementSpec
+from kraken.common import LocalRequirement, PipRequirement, RequirementSpec
 
 
 @dataclasses.dataclass(frozen=True)
@@ -37,8 +36,6 @@ class Lockfile:
 
     @staticmethod
     def from_json(data: dict[str, Any]) -> Lockfile:
-        from kraken.core.util.requirements import RequirementSpec
-
         return Lockfile(
             requirements=RequirementSpec.from_json(data["requirements"]),
             pinned=data["pinned"],
@@ -52,8 +49,6 @@ class Lockfile:
 
     def to_pinned_requirement_spec(self) -> RequirementSpec:
         """Converts the pinned versions in the lock file to a :class:`RequirementSpec` with the pinned requirements."""
-
-        from kraken.core.util.requirements import LocalRequirement, RequirementSpec
 
         requirements = RequirementSpec(
             requirements=(),
@@ -88,7 +83,6 @@ def calculate_lockfile(
     :return: (lockfile, extra_distributions)
     """
 
-    from kraken.core.util.requirements import PipRequirement
     from pkg_resources import Requirement as ParsedRequirement
 
     # Contains the versions we pinned.

@@ -10,12 +10,20 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, NoReturn
 
-from . import __version__
-from .lockfile import calculate_lockfile
+from kraken.common import (
+    AsciiTable,
+    KrakenMetadata,
+    RequirementSpec,
+    datetime_to_iso8601,
+    inline_text,
+    parse_requirement,
+)
+from termcolor import colored
+
+from kraken.wrapper import __version__
+from kraken.wrapper.lockfile import calculate_lockfile
 
 if TYPE_CHECKING:
-    from kraken.core.util.requirements import RequirementSpec
-
     from kraken.wrapper.buildenv import BuildEnvManager, BuildEnvType
     from kraken.wrapper.config import AuthModel
     from kraken.wrapper.lockfile import Lockfile
@@ -33,7 +41,6 @@ eprint = partial(print, file=sys.stderr)
 
 def _get_argument_parser() -> argparse.ArgumentParser:
     from kraken.core.cli.option_sets import LoggingOptions
-    from kraken.core.util.text import inline_text
     from termcolor import colored
 
     from kraken.wrapper.option_sets import EnvOptions
@@ -67,8 +74,6 @@ def _get_argument_parser() -> argparse.ArgumentParser:
 
 
 def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
-    from kraken.core.util.text import inline_text
-    from termcolor import colored
 
     parser = argparse.ArgumentParser(
         prog,
@@ -112,8 +117,6 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, project: Project)
 
 
 def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
-    from kraken.core.util.text import inline_text
-
     from kraken.wrapper.option_sets import AuthOptions
 
     parser = argparse.ArgumentParser(
@@ -132,8 +135,6 @@ def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
 
 def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
     import getpass
-
-    from kraken.core.util.asciitable import AsciiTable
 
     from kraken.wrapper.option_sets import AuthOptions
 
@@ -180,9 +181,6 @@ def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
 def _print_env_status(manager: BuildEnvManager, project: Project) -> None:
     """Print the status of the environent as a nicely formatted table."""
 
-    from kraken.core.util.asciitable import AsciiTable
-    from kraken.core.util.json import dt2json
-
     hash_algorithm = manager.get_hash_algorithm()
 
     table = AsciiTable()
@@ -199,7 +197,7 @@ def _print_env_status(manager: BuildEnvManager, project: Project) -> None:
         environment = manager.get_environment()
         table.rows.append(("Environment", str(environment.get_path()), environment.get_type().name))
         table.rows.append(("  Metadata", str(manager.get_metadata_file()), "-"))
-        table.rows.append(("    Created at", "", dt2json(metadata.created_at)))
+        table.rows.append(("    Created at", "", datetime_to_iso8601(metadata.created_at)))
         table.rows.append(("    Requirements hash", "", metadata.requirements_hash))
     else:
         table.rows.append(("Environment", str(manager.get_environment().get_path()), "n/a"))
@@ -291,7 +289,7 @@ class Project(NamedTuple):
 
 
 def load_project(
-    requirements_path: Path = Path(BUILDSCRIPT_FILENAME),
+    buildscript_path: Path = Path(BUILDSCRIPT_FILENAME),
     lockfile_path: Path = Path(LOCK_FILENAME),
     build_support_dir: str = BUILD_SUPPORT_DIRECTORY,
     outdated_check: bool = True,
@@ -301,7 +299,7 @@ def load_project(
     and returns it. The project information includes the requirements for the project as well as the
     parsed lockfile, if present.
 
-    :param requirements_path: The file to parse the requirements from the header.
+    :param buildscript_path: The file to parse the requirements from the header.
     :param lockfile_path: The file to parse as a lockfile, if present.
     :param build_support_dir: The directory that is supposed to be always present in the
         :attr:`RequirementSpec.pythonpath`.
@@ -309,37 +307,42 @@ def load_project(
         generated with is outdated compared to the project requirements.
     """
 
-    from kraken.core.util.requirements import parse_requirements_from_python_script
-
     from kraken.wrapper.lockfile import Lockfile
 
-    if not requirements_path.is_file():
-        print(f'error: no "{requirements_path}" in current directory', file=sys.stderr)
+    if not buildscript_path.is_file():
+        print(f'error: no "{buildscript_path}" in current directory', file=sys.stderr)
         sys.exit(1)
 
     # Load requirement spec from build script.
-    logger.debug('loading requirements from "%s"', requirements_path)
-    with requirements_path.open() as fp:
-        requirements = parse_requirements_from_python_script(fp)
-        if not requirements.requirements:
-            print(f'error: no requirements in "{requirements_path}"')
-            sys.exit(1)
-        if build_support_dir not in requirements.pythonpath:
-            requirements = requirements.with_pythonpath([build_support_dir])
-        if not requirements.interpreter_constraint:
-            requirements = requirements.replace(interpreter_constraint=DEFAULT_INTERPRETER_CONSTRAINT)
+    logger.debug('loading requirements from "%s"', buildscript_path)
+    with buildscript_path.open() as fp, KrakenMetadata.capture() as metadata_future:
+        exec(compile(fp.read(), filename=buildscript_path, mode="exec"), {})
+
+    metadata = metadata_future.result()
+    requirements = RequirementSpec(
+        requirements=tuple(map(parse_requirement, metadata.requirements)),
+        index_url=metadata.index_url,
+        extra_index_urls=metadata.extra_index_urls,
+        interpreter_constraint=None,
+        pythonpath=metadata.additional_sys_paths,
+    )
+
+    if build_support_dir not in requirements.pythonpath:
+        requirements = requirements.with_pythonpath([build_support_dir])
+    if not requirements.interpreter_constraint:
+        requirements = requirements.replace(interpreter_constraint=DEFAULT_INTERPRETER_CONSTRAINT)
 
     # Load lockfile if it exists.
     if lockfile_path.is_file():
         logger.debug('loading lockfile from "%s"', lockfile_path)
         lockfile = Lockfile.from_path(lockfile_path)
         if outdated_check and lockfile and lockfile.requirements != requirements:
-            eprint(f'lock file "{lockfile_path}" is outdated compared to requirements in "{requirements_path}"')
+            eprint(f'lock file "{lockfile_path}" is outdated compared to requirements in "{buildscript_path}"')
             eprint("consider updating the lock file with `krakenw --upgrade lock`")
     else:
         lockfile = None
 
-    return Project(requirements_path, requirements, lockfile_path, lockfile)
+    return Project(buildscript_path, requirements, lockfile_path, lockfile)
 
 
 def main() -> NoReturn:

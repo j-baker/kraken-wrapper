@@ -19,8 +19,8 @@ from kraken.common import (
     RequirementSpec,
     datetime_to_iso8601,
     iso8601_to_datetime,
-    not_none,
     lazy_str,
+    not_none,
     safe_rmpath,
 )
 
