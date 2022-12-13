@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import argparse
 
-    from kraken.wrapper.buildenv import EnvironmentType
+    from kraken.common import EnvironmentType
 
 
 @dataclasses.dataclass(frozen=True)
@@ -54,7 +54,7 @@ class EnvOptions:
 
     @classmethod
     def collect(cls, args: argparse.Namespace) -> EnvOptions:
-        from kraken.wrapper.buildenv import EnvironmentType
+        from kraken.common import EnvironmentType
 
         return cls(
             status=args.status,

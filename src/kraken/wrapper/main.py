@@ -14,7 +14,10 @@ from typing import TYPE_CHECKING, NamedTuple, NoReturn
 from kraken.common import (
     AsciiTable,
     BuildscriptMetadata,
+    EnvironmentType,
+    LoggingOptions,
     RequirementSpec,
+    TomlConfigFile,
     datetime_to_iso8601,
     inline_text,
     parse_requirement,
@@ -26,7 +29,7 @@ from kraken.wrapper import __version__
 from kraken.wrapper.lockfile import calculate_lockfile
 
 if TYPE_CHECKING:
-    from kraken.wrapper.buildenv import BuildEnvManager, BuildEnvType
+    from kraken.wrapper.buildenv import BuildEnvManager
     from kraken.wrapper.config import AuthModel
     from kraken.wrapper.lockfile import Lockfile
 
@@ -35,6 +38,7 @@ BUILDSCRIPT_FILENAME = ".kraken.py"
 BUILD_SUPPORT_DIRECTORY = "build-support"
 DEFAULT_INTERPRETER_CONSTRAINT = ">=3.7"
 LOCK_FILENAME = ".kraken.lock"
+DEFAULT_CONFIG_PATH = Path("~/.config/krakenw/config.toml").expanduser()
 _FormatterClass = lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=60, width=120)  # noqa: 731
 logger = logging.getLogger(__name__)
 print = partial(builtins.print, "[krakenw]", flush=True)
@@ -42,7 +46,6 @@ eprint = partial(print, file=sys.stderr)
 
 
 def _get_argument_parser() -> argparse.ArgumentParser:
-    from kraken.core.cli.option_sets import LoggingOptions
     from termcolor import colored
 
     from kraken.wrapper.option_sets import EnvOptions
@@ -91,8 +94,6 @@ def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
 
 
 def lock(prog: str, argv: list[str], manager: BuildEnvManager, project: Project) -> NoReturn:
-    from kraken.wrapper.buildenv import BuildEnvType
-
     parser = _get_lock_argument_parser(prog)
     parser.parse_args(argv)
 
@@ -104,7 +105,7 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, project: Project)
     distributions = environment.get_installed_distributions()
     lockfile, extra_distributions = calculate_lockfile(project.requirements, distributions)
 
-    if environment.get_type() == BuildEnvType.VENV:
+    if environment.get_type() == EnvironmentType.VENV:
         extra_distributions.discard("pip")  # We'll always have that in a virtual env.
 
     if extra_distributions:
@@ -135,11 +136,14 @@ def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
     return parser
 
 
-def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
+def auth(prog: str, argv: list[str]) -> NoReturn:
     import getpass
 
     from kraken.wrapper.option_sets import AuthOptions
+    from kraken.wrapper.config import AuthModel
 
+    config = TomlConfigFile(DEFAULT_CONFIG_PATH)
+    auth = AuthModel(config, DEFAULT_CONFIG_PATH)
     parser = _get_auth_argument_parser(prog)
     args = AuthOptions.collect(parser.parse_args(argv))
 
@@ -154,6 +158,7 @@ def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
         if not args.host:
             parser.error("missing argument `host`")
         auth.delete_credentials(args.host)
+        config.save()
     elif args.list:
         if args.remove or args.host or args.username or args.password or args.password_stdin:
             parser.error("incompatible arguments")
@@ -173,6 +178,7 @@ def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
         else:
             password = getpass.getpass(f"Password for {args.host}:")
         auth.set_credentials(args.host, args.username, password)
+        config.save()
     else:
         parser.print_usage()
         sys.exit(1)
@@ -211,7 +217,7 @@ def _ensure_installed(
     project: Project,
     reinstall: bool,
     upgrade: bool,
-    env_type: BuildEnvType | None = None,
+    env_type: EnvironmentType | None = None,
 ) -> None:
 
     exists = manager.exists()
@@ -352,9 +358,9 @@ def load_project(
         requirements = RequirementSpec(
             requirements=tuple(map(parse_requirement, metadata.requirements)),
             index_url=metadata.index_url,
-            extra_index_urls=metadata.extra_index_urls,
+            extra_index_urls=tuple(metadata.extra_index_urls),
             interpreter_constraint=None,
-            pythonpath=metadata.additional_sys_paths,
+            pythonpath=tuple(metadata.additional_sys_paths),
         )
 
     if build_support_dir not in requirements.pythonpath:
@@ -381,10 +387,7 @@ def load_project(
 
 
 def main() -> NoReturn:
-    from kraken.core.cli.option_sets import LoggingOptions
-
     from kraken.wrapper.buildenv import BuildEnvManager
-    from kraken.wrapper.config import DEFAULT_CONFIG_PATH, AuthModel, ConfigFile
     from kraken.wrapper.option_sets import EnvOptions
 
     parser = _get_argument_parser()
@@ -392,7 +395,6 @@ def main() -> NoReturn:
     logging_options = LoggingOptions.collect(args)
     logging_options.init_logging()
     env_options = EnvOptions.collect(args)
-    config = ConfigFile(DEFAULT_CONFIG_PATH)
 
     if not args.cmd and not env_options.any():
         parser.print_usage()
@@ -405,12 +407,13 @@ def main() -> NoReturn:
 
     if cmd in ("a", "auth"):
         # The `auth` comand does not require any current project information, it can be used globally.
-        auth(f"{parser.prog} auth", argv, AuthModel(config))
+        auth(f"{parser.prog} auth", argv)
 
     # The project details and build environment manager are relevant for any command that we are delegating.
     # This includes the built-in `lock` command.
+    config = TomlConfigFile(DEFAULT_CONFIG_PATH)
     project = load_project(outdated_check=not env_options.upgrade)
-    manager = BuildEnvManager(BUILDENV_PATH, AuthModel(config))
+    manager = BuildEnvManager(BUILDENV_PATH, AuthModel(config, DEFAULT_CONFIG_PATH))
 
     # Execute environment operations before delegating the command.
 

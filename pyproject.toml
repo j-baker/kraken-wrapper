@@ -21,12 +21,10 @@ keywords = []
 
 [tool.poetry.dependencies]
 python = "^3.7"
-kraken-core = "^0.9.1"
-pex = "^2.1.103"
-tomli = "^2.0.1"
-tomli_w = "^1.0.0"
-setuptools = ">=33.0.0"
 keyring = "^23.8.2"
+kraken-common = "^0.3.0"
+pex = "^2.1.103"
+setuptools = ">=33.0.0"  # For pkg_resources
 termcolor = "^1.1.0"
 
 [tool.poetry.dev-dependencies]

@@ -2,48 +2,13 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Iterator, MutableMapping, NamedTuple
+from typing import Any, MutableMapping, NamedTuple
 
 import keyring
 import keyring.backends.fail
-import tomli
-import tomli_w
 
 logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = Path("~/.config/krakenw/config.toml").expanduser()
-
-
-class ConfigFile(MutableMapping[str, Any]):
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self._data: dict[str, Any] | None = None
-
-    def _get_data(self) -> dict[str, Any]:
-        if self._data is None:
-            if self.path.is_file():
-                self._data = tomli.loads(self.path.read_text())
-            else:
-                self._data = {}
-        return self._data
-
-    def __getitem__(self, key: str) -> Any:
-        return self._get_data()[key]
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self._get_data()[key] = value
-
-    def __delitem__(self, key: str) -> None:
-        del self._get_data()[key]
-
-    def __len__(self) -> int:
-        return len(self._get_data())
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._get_data())
-
-    def save(self) -> None:
-        self.path.parent.mkdir(exist_ok=True, parents=True)
-        self.path.write_text(tomli_w.dumps(self._get_data()))
 
 
 class AuthModel:
@@ -59,8 +24,9 @@ class AuthModel:
         username: str
         password: str
 
-    def __init__(self, config: ConfigFile) -> None:
+    def __init__(self, config: MutableMapping[str, Any], path: Path) -> None:
         self._config = config
+        self._path = path
         self._has_keyring = not isinstance(keyring.get_keyring(), keyring.backends.fail.Keyring)
 
     def get_credentials(self, host: str) -> Credentials | None:
@@ -86,11 +52,9 @@ class AuthModel:
         if not self._has_keyring:
             auth[host]["password"] = password
             logger.warning("no keyring backend available, password will be stored in plain text")
-            logger.info("saving username and password for %s in %s", host, self._config.path)
-            self._config.save()
+            logger.info("saving username and password for %s in %s", host, self._path)
         else:
-            logger.info("saving username for %s in %s", host, self._config.path)
-            self._config.save()
+            logger.info("saving username for %s in %s", host, self._path)
             logger.info("saving password for %s in keyring", host)
             keyring.set_password(host, username, password)
 
@@ -98,9 +62,8 @@ class AuthModel:
         auth = self._config.get("auth")
         if auth and host in auth:
             username = auth[host].get("username")
-            logger.info("deleting username for %s from %s", host, self._config.path)
+            logger.info("deleting username for %s from %s", host, self._path)
             del auth[host]
-            self._config.save()
             if username and self._has_keyring:
                 logger.info("deleting password for %s from keyring", host)
                 try:
