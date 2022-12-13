@@ -26,7 +26,7 @@ from kraken.common import (
     not_none,
     safe_rmpath,
 )
-from nr.python.environment.virtualenv import VirtualEnvInfo
+from kraken.common.pyenv import VirtualEnvInfo
 from pex.pex import PEX
 from pex.pex_bootstrapper import bootstrap_pex_env
 
