@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, NoReturn, Sequence
 
 from kraken.common import (
-    KrakenEnvironmentType,
+    EnvironmentType,
     NotSet,
     RequirementSpec,
     datetime_to_iso8601,
@@ -42,7 +42,7 @@ class BuildEnv(abc.ABC):
     """Interface for the build environment."""
 
     @abc.abstractmethod
-    def get_type(self) -> KrakenEnvironmentType:
+    def get_type(self) -> EnvironmentType:
         """Return the type of build environment that this is."""
 
     @abc.abstractmethod
@@ -67,7 +67,7 @@ class BuildEnv(abc.ABC):
 @dataclasses.dataclass(frozen=True)
 class BuildEnvMetadata:
     created_at: datetime.datetime
-    environment_type: KrakenEnvironmentType
+    environment_type: EnvironmentType
     requirements_hash: str
     hash_algorithm: str
 
@@ -75,7 +75,7 @@ class BuildEnvMetadata:
     def from_json(cls, data: dict[str, Any]) -> BuildEnvMetadata:
         return cls(
             created_at=iso8601_to_datetime(data["created_at"]),
-            environment_type=KrakenEnvironmentType[data["environment_type"]],
+            environment_type=EnvironmentType[data["environment_type"]],
             requirements_hash=data["requirements_hash"],
             hash_algorithm=data["hash_algorithm"],
         )
@@ -111,9 +111,9 @@ class BuildEnvMetadataStore:
 
 
 class PexBuildEnv(BuildEnv):
-    STYLES = (KrakenEnvironmentType.PEX_ZIPAPP, KrakenEnvironmentType.PEX_PACKED, KrakenEnvironmentType.PEX_LOOSE)
+    STYLES = (EnvironmentType.PEX_ZIPAPP, EnvironmentType.PEX_PACKED, EnvironmentType.PEX_LOOSE)
 
-    def __init__(self, style: KrakenEnvironmentType, path: Path) -> None:
+    def __init__(self, style: EnvironmentType, path: Path) -> None:
         assert style in self.STYLES
         self._style = style
         self._path = path
@@ -145,7 +145,7 @@ class PexBuildEnv(BuildEnv):
     def get_path(self) -> Path:
         return self._path
 
-    def get_type(self) -> KrakenEnvironmentType:
+    def get_type(self) -> EnvironmentType:
         return self._style
 
     def get_installed_distributions(self) -> list[Distribution]:
@@ -168,9 +168,9 @@ class PexBuildEnv(BuildEnv):
         )
 
         layout = {
-            KrakenEnvironmentType.PEX_ZIPAPP: PEXLayout.ZIPAPP,
-            KrakenEnvironmentType.PEX_PACKED: PEXLayout.PACKED,
-            KrakenEnvironmentType.PEX_LOOSE: PEXLayout.LOOSE,
+            EnvironmentType.PEX_ZIPAPP: PEXLayout.ZIPAPP,
+            EnvironmentType.PEX_PACKED: PEXLayout.PACKED,
+            EnvironmentType.PEX_LOOSE: PEXLayout.LOOSE,
         }[self._style]
 
         logger.debug("PEX build configuration is %s", lazy_str(lambda: pprint.pformat(config)))
@@ -219,8 +219,8 @@ class VenvBuildEnv(BuildEnv):
     def get_path(self) -> Path:
         return self._path
 
-    def get_type(self) -> KrakenEnvironmentType:
-        return KrakenEnvironmentType.VENV
+    def get_type(self) -> EnvironmentType:
+        return EnvironmentType.VENV
 
     def get_installed_distributions(self) -> list[Distribution]:
         python = self._venv.get_bin("python")
@@ -288,7 +288,7 @@ class BuildEnvManager:
         self,
         path: Path,
         auth: AuthModel,
-        default_type: KrakenEnvironmentType = KrakenEnvironmentType.VENV,
+        default_type: EnvironmentType = EnvironmentType.VENV,
         default_hash_algorithm: str = "sha256",
     ) -> None:
         assert (
@@ -327,7 +327,7 @@ class BuildEnvManager:
     def install(
         self,
         requirements: RequirementSpec,
-        env_type: KrakenEnvironmentType | None = None,
+        env_type: EnvironmentType | None = None,
         transitive: bool = True,
     ) -> None:
         """
@@ -388,10 +388,10 @@ class BuildEnvManager:
         self._metadata_store.set(metadata)
 
 
-def _get_environment_for_type(environment_type: KrakenEnvironmentType, base_path: Path) -> BuildEnv:
+def _get_environment_for_type(environment_type: EnvironmentType, base_path: Path) -> BuildEnv:
     if environment_type in PexBuildEnv.STYLES:
         return PexBuildEnv(environment_type, base_path.parent / (base_path.name + ".pex"))
-    elif environment_type == KrakenEnvironmentType.VENV:
+    elif environment_type == EnvironmentType.VENV:
         return VenvBuildEnv(base_path, incremental=os.getenv("KRAKENW_INCREMENTAL") == "1")
     else:
         raise RuntimeError(f"unsupported environment type: {environment_type!r}")

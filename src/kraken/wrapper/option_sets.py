@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import argparse
 
-    from kraken.wrapper.buildenv import KrakenEnvironmentType
+    from kraken.wrapper.buildenv import EnvironmentType
 
 
 @dataclasses.dataclass(frozen=True)
@@ -16,11 +16,11 @@ class EnvOptions:
     upgrade: bool
     reinstall: bool
     uninstall: bool
-    use: KrakenEnvironmentType | None
+    use: EnvironmentType | None
 
     @staticmethod
     def add_to_parser(parser: argparse.ArgumentParser) -> None:
-        from kraken.common import KrakenEnvironmentType
+        from kraken.common import EnvironmentType
 
         parser.add_argument(
             "--status",
@@ -44,7 +44,7 @@ class EnvOptions:
         )
         parser.add_argument(
             "--use",
-            choices=[v.name for v in KrakenEnvironmentType if v.is_wrapped()],
+            choices=[v.name for v in EnvironmentType if v.is_wrapped()],
             default=os.getenv("KRAKENW_USE"),
             help="use the specified environment type. If the environment type changes it will trigger a reinstall.\n"
             "Defaults to the value of the KRAKENW_USE environment variable. If that variable is unset, and\nif a build "
@@ -54,14 +54,14 @@ class EnvOptions:
 
     @classmethod
     def collect(cls, args: argparse.Namespace) -> EnvOptions:
-        from kraken.wrapper.buildenv import KrakenEnvironmentType
+        from kraken.wrapper.buildenv import EnvironmentType
 
         return cls(
             status=args.status,
             upgrade=args.upgrade,
             reinstall=args.reinstall,
             uninstall=args.uninstall,
-            use=KrakenEnvironmentType[args.use] if args.use else None,
+            use=EnvironmentType[args.use] if args.use else None,
         )
 
     def any(self) -> bool:
