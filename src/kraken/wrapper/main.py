@@ -9,7 +9,7 @@ import sys
 import time
 from functools import partial
 from pathlib import Path
-from textwrap import dedent, indent
+from textwrap import indent
 from typing import NamedTuple, NoReturn
 
 from kraken.common import (
@@ -23,7 +23,6 @@ from kraken.common import (
     deprecated_get_requirement_spec_from_file_header,
     find_build_script,
     inline_text,
-    parse_requirement,
 )
 from termcolor import colored
 
