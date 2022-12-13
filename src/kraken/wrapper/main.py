@@ -8,15 +8,17 @@ import sys
 import time
 from functools import partial
 from pathlib import Path
+from textwrap import dedent, indent
 from typing import TYPE_CHECKING, NamedTuple, NoReturn
 
 from kraken.common import (
     AsciiTable,
-    KrakenMetadata,
+    BuildscriptMetadata,
     RequirementSpec,
     datetime_to_iso8601,
     inline_text,
     parse_requirement,
+    parse_requirements_from_python_script,
 )
 from termcolor import colored
 
@@ -315,17 +317,50 @@ def load_project(
 
     # Load requirement spec from build script.
     logger.debug('loading requirements from "%s"', buildscript_path)
-    with buildscript_path.open() as fp, KrakenMetadata.capture() as metadata_future:
-        exec(compile(fp.read(), filename=buildscript_path, mode="exec"), {})
 
-    metadata = metadata_future.result()
-    requirements = RequirementSpec(
-        requirements=tuple(map(parse_requirement, metadata.requirements)),
-        index_url=metadata.index_url,
-        extra_index_urls=metadata.extra_index_urls,
-        interpreter_constraint=None,
-        pythonpath=metadata.additional_sys_paths,
-    )
+    # For backwards compatibility, support loading the requirements from the comment header.
+    with buildscript_path.open() as fp:
+        requirements = parse_requirements_from_python_script(fp)
+
+    if requirements:
+        logger.warning(
+            "The # ::requirements header is deprecated and support for it will be removed in a future version "
+            "of kraken-wrapper. Please use the `buildscript()` function from the `kraken.commons` package "
+            "from now on.\n\n%s\n",
+            indent(
+                dedent(
+                    f"""
+                    from kraken.common import buildscript
+
+                    buildscript(
+                        index_url={requirements.index_url!r},
+                        extra_index_urls={requirements.extra_index_urls!r},
+                        requirements={[str(x) for x in requirements.requirements]!r},
+                    )
+                    """
+                ),
+                "    ",
+            ),
+        )
+
+    # Extract the relevant data from the buildscript() call instead.
+    if not requirements:
+        with buildscript_path.open() as fp, BuildscriptMetadata.capture() as metadata_future:
+            exec(compile(fp.read(), filename=buildscript_path, mode="exec"), {})
+
+        metadata = metadata_future.result()
+        requirements = RequirementSpec(
+            requirements=tuple(map(parse_requirement, metadata.requirements)),
+            index_url=metadata.index_url,
+            extra_index_urls=metadata.extra_index_urls,
+            interpreter_constraint=None,
+            pythonpath=metadata.additional_sys_paths,
+        )
+
+    if build_support_dir not in requirements.pythonpath:
+        requirements = requirements.with_pythonpath([build_support_dir])
+    if not requirements.interpreter_constraint:
+        requirements = requirements.replace(interpreter_constraint=DEFAULT_INTERPRETER_CONSTRAINT)
 
     if build_support_dir not in requirements.pythonpath:
         requirements = requirements.with_pythonpath([build_support_dir])
