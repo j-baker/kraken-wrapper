@@ -1,13 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import os
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import argparse
-
-    from kraken.common import EnvironmentType
+from kraken.common import EnvironmentType
 
 
 @dataclasses.dataclass(frozen=True)
@@ -20,8 +17,6 @@ class EnvOptions:
 
     @staticmethod
     def add_to_parser(parser: argparse.ArgumentParser) -> None:
-        from kraken.common import EnvironmentType
-
         parser.add_argument(
             "--status",
             action="store_true",
@@ -54,8 +49,6 @@ class EnvOptions:
 
     @classmethod
     def collect(cls, args: argparse.Namespace) -> EnvOptions:
-        from kraken.common import EnvironmentType
-
         return cls(
             status=args.status,
             upgrade=args.upgrade,

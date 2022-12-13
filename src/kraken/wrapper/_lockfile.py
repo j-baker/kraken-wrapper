@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from kraken.common import LocalRequirement, PipRequirement, RequirementSpec
+from pkg_resources import Requirement as ParsedRequirement
 
 
 @dataclasses.dataclass(frozen=True)
@@ -82,8 +83,6 @@ def calculate_lockfile(
         will be embedded as part of the returned lockfile.
     :return: (lockfile, extra_distributions)
     """
-
-    from pkg_resources import Requirement as ParsedRequirement
 
     # Contains the versions we pinned.
     pinned: dict[str, str] = {}

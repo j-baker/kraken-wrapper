@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import abc
 import contextlib
+import copy
 import dataclasses
 import datetime
 import hashlib
 import json
 import logging
 import os
+import pprint
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator, NoReturn, Sequence
+from typing import Any, Callable, Iterator, NoReturn, Sequence
+from urllib.parse import quote, urlparse, urlunparse
 
 from kraken.common import (
     EnvironmentType,
@@ -23,10 +26,13 @@ from kraken.common import (
     not_none,
     safe_rmpath,
 )
+from nr.python.environment.virtualenv import VirtualEnvInfo
+from pex.pex import PEX
+from pex.pex_bootstrapper import bootstrap_pex_env
 
-if TYPE_CHECKING:
-    from kraken.wrapper.config import AuthModel
-    from kraken.wrapper.lockfile import Distribution, Lockfile
+from ._config import AuthModel
+from ._lockfile import Distribution, Lockfile
+from ._pex import PEXBuildConfig, PEXLayout
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +126,6 @@ class PexBuildEnv(BuildEnv):
 
     @contextlib.contextmanager
     def activate(self) -> Iterator[None]:
-        import copy
-
-        from pex.pex import PEX
-        from pex.pex_bootstrapper import bootstrap_pex_env
-
         assert self._path.exists(), f'expected PEX file at "{self._path}"'
         pex = PEX(self._path)
 
@@ -152,10 +153,6 @@ class PexBuildEnv(BuildEnv):
         return _get_installed_distributions([sys.executable, str(self._path)])
 
     def build(self, requirements: RequirementSpec, transitive: bool) -> None:
-        import pprint
-
-        from kraken.wrapper.pex import PEXBuildConfig, PEXLayout
-
         config = PEXBuildConfig(
             interpreter_constraints=(
                 [requirements.interpreter_constraint] if requirements.interpreter_constraint else []
@@ -208,8 +205,6 @@ class PexBuildEnv(BuildEnv):
 
 class VenvBuildEnv(BuildEnv):
     def __init__(self, path: Path, incremental: bool = False) -> None:
-        from nr.python.environment.virtualenv import VirtualEnvInfo
-
         self._path = path
         self._venv = VirtualEnvInfo(self._path)
         self._incremental = incremental
@@ -302,8 +297,6 @@ class BuildEnvManager:
         self._default_hash_algorithm = default_hash_algorithm
 
     def _inject_auth(self, url: str) -> str:
-        from urllib.parse import quote, urlparse, urlunparse
-
         parsed_url = urlparse(url)
         credentials = self._auth.get_credentials(parsed_url.netloc)
         if credentials is None:
@@ -398,8 +391,6 @@ def _get_environment_for_type(environment_type: EnvironmentType, base_path: Path
 
 
 def _get_installed_distributions(kraken_command_prefix: Sequence[str]) -> list[Distribution]:
-    from kraken.wrapper.lockfile import Distribution
-
     command = [*kraken_command_prefix, "query", "env"]
     output = subprocess.check_output(command).decode()
     return [Distribution(x["name"], x["version"], x["requirements"], x["extras"]) for x in json.loads(output)]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import builtins
+import getpass
 import logging
 import os
 import sys
@@ -9,7 +10,7 @@ import time
 from functools import partial
 from pathlib import Path
 from textwrap import dedent, indent
-from typing import TYPE_CHECKING, NamedTuple, NoReturn
+from typing import NamedTuple, NoReturn
 
 from kraken.common import (
     AsciiTable,
@@ -25,20 +26,17 @@ from kraken.common import (
 )
 from termcolor import colored
 
-from kraken.wrapper import __version__
-from kraken.wrapper.lockfile import calculate_lockfile
-
-if TYPE_CHECKING:
-    from kraken.wrapper.buildenv import BuildEnvManager
-    from kraken.wrapper.config import AuthModel
-    from kraken.wrapper.lockfile import Lockfile
+from . import __version__
+from ._buildenv import BuildEnvManager
+from ._config import DEFAULT_CONFIG_PATH, AuthModel
+from ._lockfile import Lockfile, calculate_lockfile
+from ._option_sets import AuthOptions, EnvOptions
 
 BUILDENV_PATH = Path("build/.kraken/venv")
 BUILDSCRIPT_FILENAME = ".kraken.py"
 BUILD_SUPPORT_DIRECTORY = "build-support"
 DEFAULT_INTERPRETER_CONSTRAINT = ">=3.7"
 LOCK_FILENAME = ".kraken.lock"
-DEFAULT_CONFIG_PATH = Path("~/.config/krakenw/config.toml").expanduser()
 _FormatterClass = lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=60, width=120)  # noqa: 731
 logger = logging.getLogger(__name__)
 print = partial(builtins.print, "[krakenw]", flush=True)
@@ -46,9 +44,6 @@ eprint = partial(print, file=sys.stderr)
 
 
 def _get_argument_parser() -> argparse.ArgumentParser:
-    from termcolor import colored
-
-    from kraken.wrapper.option_sets import EnvOptions
 
     parser = argparse.ArgumentParser(
         "krakenw",
@@ -120,8 +115,6 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, project: Project)
 
 
 def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
-    from kraken.wrapper.option_sets import AuthOptions
-
     parser = argparse.ArgumentParser(
         prog,
         formatter_class=_FormatterClass,
@@ -137,11 +130,6 @@ def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
 
 
 def auth(prog: str, argv: list[str]) -> NoReturn:
-    import getpass
-
-    from kraken.wrapper.option_sets import AuthOptions
-    from kraken.wrapper.config import AuthModel
-
     config = TomlConfigFile(DEFAULT_CONFIG_PATH)
     auth = AuthModel(config, DEFAULT_CONFIG_PATH)
     parser = _get_auth_argument_parser(prog)
@@ -315,8 +303,6 @@ def load_project(
         generated with is outdated compared to the project requirements.
     """
 
-    from kraken.wrapper.lockfile import Lockfile
-
     if not buildscript_path.is_file():
         print(f'error: no "{buildscript_path}" in current directory', file=sys.stderr)
         sys.exit(1)
@@ -387,9 +373,6 @@ def load_project(
 
 
 def main() -> NoReturn:
-    from kraken.wrapper.buildenv import BuildEnvManager
-    from kraken.wrapper.option_sets import EnvOptions
-
     parser = _get_argument_parser()
     args = parser.parse_args()
     logging_options = LoggingOptions.collect(args)
