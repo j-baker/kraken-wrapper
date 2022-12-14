@@ -1,60 +1,47 @@
 # kraken-wrapper
 
-Provides the `krakenw` command which is a wrapper around Kraken to construct an isolated and reproducible build
-environment.
+Provides the `krakenw` command which is a wrapper around Kraken build scripts to construct an isolated and
+reproducible build environment as per the dependencies specified in the script.
 
-### Features
+Build scripts _must_ invoke the `kraken.common.buildscript` function at the top to be compatible with Kraken
+wrapper.
 
-* Produces isolated environments in PEX format
-* Reads build requirements from the `.kraken.py` file header
-* Produces lock files (`.kraken.lock`) that can be used to reconstruct an exact build environment <sup>1)</sup>
-* Store Python package index credentials in a keychain
-
-<sup>1) The lock files do not contain hashes for installed distributions, but only the exact version numbers from
-the resolved build environment.</sup>
-
-## Documentation
-
-__Table of Contents__
-
-* [Requirements header](#requirements-header)
-* [Environment variables](#environment-variables)
-* [Recommendations](#recommendations)
-* [Index credentials](#index-credentials)
-
-### Requirements header
-
-If no `.kraken.lock` file is present, Kraken wrapper will read the header of the `.kraken.py` file to obtain the
-requirements to install into the build environment. The format of this header is demonstrated below:
+<table align="center"><tr><th>Python</th><th>BuildDSL</th></tr>
+<tr><td>
 
 ```py
-# ::requirements kraken-std>=0.3.0,<0.4.0 --extra-index-url https://...
-# ::pythonpath build-support
+from kraken.common import buildscript
+
+buildscript(
+    requirements=["kraken-std ^0.4.16"],
+)
 ```
 
-The available options are:
+</td><td>
 
-| Option | Description |
-| ------ | ----------- |
-| `#::requirements` | The content on this line will be parsed similar to the arguments for `pip install`. Every positional argument is a Python requirement specifier. The following options are supported: `--index-url`, `--extra-index-url` and `--interpreter-constraint`. |
-| `#::pythonpath` | One or more paths to prepend to `sys.path` when the build environment is created/executed. This is already supported by `kraken-core` but will be used to generate a `.pth` file when using the `VENV` environment type. The `./build-support/` will always be added to `sys.path`. |
+```py
+buildscript {
+    requires "kraken-std ^0.4.16"
+}
 
-### Environment variables
 
-The following environment variables are handled by kraken-wrapper:
+```
 
-| Variable | Description |
-| -------- | ----------- |
-| `KRAKENW_USE` | If set, it will behave as if the `--use` flag was specified (although the `--use` flag if given will still take precedence over the environment variable). Can be used to enforce a certain type of build environment to use. Available values are `PEX_ZIPAPP`, `PEX_PACKED`, `PEX_LOOSE` and `VENV` (default). |
-| `KRAKENW_REINSTALL` | If set to `1`, behaves as if `--reinstall` was specified. |
-| `KRAKENW_INCREMENTAL` |  If set to `1`, virtual environment build environments are "incremental", i.e. they will be reused if they already exist and their installed distributions will be upgraded. |
+</td></tr></table>
 
-### Recommendations
+For backwards compatibility, Kraken wrapper currently still supports reading the build script's dependencies from
+the comment block at the top of the file. Build scripts that still use this method will trigger a warning log with
+a recommendation of `buildscript()` code to place at the top of the file instead.
 
-* When using local requirements, using the `VENV` type is a lot fast because it can leverage Pip's `in-tree-build`
+## Recommendations
+
+* When using *local requirements*, using the `VENV` type is a lot faster because it can leverage Pip's `in-tree-build`
 feature. Pex [does not currently support in-tree builds](https://github.com/pantsbuild/pex/issues/1357#issuecomment-860133766).
+  * [`kraken-std`][kraken-std] has a local requirement on itself so that it can use itself to build itself 🤯
 
-### Index credentials
+[kraken-std]: https://github.com/kraken-build/kraken-std
+
+## Credential management
 
   [keyring]: https://github.com/jaraco/keyring
 
@@ -71,4 +58,14 @@ where the username is stored in `~/.config/krakenw/config.toml` and the password
     Password for my@email.org:
 
 > __Important note__: If no backend for the `keyring` package is available, kraken-wrapper will fall back to writing
-> the password as plain text into the same configuration file.
+> the password as plain text into the same configuration file. A corresponding warning will be printed.
+
+## Environment variables
+
+The following environment variables are handled by kraken-wrapper:
+
+| Variable | Description |
+| -------- | ----------- |
+| `KRAKENW_USE` | If set, it will behave as if the `--use` flag was specified (although the `--use` flag if given will still take precedence over the environment variable). Can be used to enforce a certain type of build environment to use. Available values are `PEX_ZIPAPP`, `PEX_PACKED`, `PEX_LOOSE` and `VENV` (default). |
+| `KRAKENW_REINSTALL` | If set to `1`, behaves as if `--reinstall` was specified. |
+| `KRAKENW_INCREMENTAL` |  If set to `1`, virtual environment build environments are "incremental", i.e. they will be reused if they already exist and their installed distributions will be upgraded. |

@@ -8,6 +8,7 @@ from typing import Any, Iterator
 
 from pex.pex import PEX
 from pex.pex_builder import CopyMode, Layout as PEXLayout, PEXBuilder
+from pex.pip.tool import Pip
 from pex.platforms import Platform
 from pex.resolve.resolver_configuration import PYPI, PasswordEntry, ResolverVersion
 from pex.resolve.resolvers import Installed
@@ -111,8 +112,6 @@ class PEXBuildConfig:
 @contextlib.contextmanager
 def inject_pip_args_for_pex_resolve(args: list[str]) -> Iterator[None]:
     """Inject *args* into the arguments that will be used for the Pex resolve."""
-
-    from pex.pip.tool import Pip
 
     method_name = "_calculate_resolver_version_args"
 

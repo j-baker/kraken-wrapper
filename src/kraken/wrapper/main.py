@@ -2,23 +2,35 @@ from __future__ import annotations
 
 import argparse
 import builtins
+import getpass
 import logging
 import os
 import sys
 import time
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, NoReturn
+from textwrap import indent
+from typing import NamedTuple, NoReturn
+
+from kraken.common import (
+    AsciiTable,
+    BuildscriptMetadata,
+    EnvironmentType,
+    LoggingOptions,
+    RequirementSpec,
+    TomlConfigFile,
+    datetime_to_iso8601,
+    deprecated_get_requirement_spec_from_file_header,
+    find_build_script,
+    inline_text,
+)
+from termcolor import colored
 
 from . import __version__
-from .lockfile import calculate_lockfile
-
-if TYPE_CHECKING:
-    from kraken.core.util.requirements import RequirementSpec
-
-    from kraken.wrapper.buildenv import BuildEnvManager, BuildEnvType
-    from kraken.wrapper.config import AuthModel
-    from kraken.wrapper.lockfile import Lockfile
+from ._buildenv import BuildEnvManager
+from ._config import DEFAULT_CONFIG_PATH, AuthModel
+from ._lockfile import Lockfile, calculate_lockfile
+from ._option_sets import AuthOptions, EnvOptions
 
 BUILDENV_PATH = Path("build/.kraken/venv")
 BUILDSCRIPT_FILENAME = ".kraken.py"
@@ -32,11 +44,6 @@ eprint = partial(print, file=sys.stderr)
 
 
 def _get_argument_parser() -> argparse.ArgumentParser:
-    from kraken.core.cli.option_sets import LoggingOptions
-    from kraken.core.util.text import inline_text
-    from termcolor import colored
-
-    from kraken.wrapper.option_sets import EnvOptions
 
     parser = argparse.ArgumentParser(
         "krakenw",
@@ -67,8 +74,6 @@ def _get_argument_parser() -> argparse.ArgumentParser:
 
 
 def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
-    from kraken.core.util.text import inline_text
-    from termcolor import colored
 
     parser = argparse.ArgumentParser(
         prog,
@@ -84,8 +89,6 @@ def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
 
 
 def lock(prog: str, argv: list[str], manager: BuildEnvManager, project: Project) -> NoReturn:
-    from kraken.wrapper.buildenv import BuildEnvType
-
     parser = _get_lock_argument_parser(prog)
     parser.parse_args(argv)
 
@@ -97,7 +100,7 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, project: Project)
     distributions = environment.get_installed_distributions()
     lockfile, extra_distributions = calculate_lockfile(project.requirements, distributions)
 
-    if environment.get_type() == BuildEnvType.VENV:
+    if environment.get_type() == EnvironmentType.VENV:
         extra_distributions.discard("pip")  # We'll always have that in a virtual env.
 
     if extra_distributions:
@@ -112,10 +115,6 @@ def lock(prog: str, argv: list[str], manager: BuildEnvManager, project: Project)
 
 
 def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
-    from kraken.core.util.text import inline_text
-
-    from kraken.wrapper.option_sets import AuthOptions
-
     parser = argparse.ArgumentParser(
         prog,
         formatter_class=_FormatterClass,
@@ -130,13 +129,9 @@ def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
     return parser
 
 
-def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
-    import getpass
-
-    from kraken.core.util.asciitable import AsciiTable
-
-    from kraken.wrapper.option_sets import AuthOptions
-
+def auth(prog: str, argv: list[str]) -> NoReturn:
+    config = TomlConfigFile(DEFAULT_CONFIG_PATH)
+    auth = AuthModel(config, DEFAULT_CONFIG_PATH)
     parser = _get_auth_argument_parser(prog)
     args = AuthOptions.collect(parser.parse_args(argv))
 
@@ -151,6 +146,7 @@ def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
         if not args.host:
             parser.error("missing argument `host`")
         auth.delete_credentials(args.host)
+        config.save()
     elif args.list:
         if args.remove or args.host or args.username or args.password or args.password_stdin:
             parser.error("incompatible arguments")
@@ -170,6 +166,7 @@ def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
         else:
             password = getpass.getpass(f"Password for {args.host}:")
         auth.set_credentials(args.host, args.username, password)
+        config.save()
     else:
         parser.print_usage()
         sys.exit(1)
@@ -179,9 +176,6 @@ def auth(prog: str, argv: list[str], auth: AuthModel) -> NoReturn:
 
 def _print_env_status(manager: BuildEnvManager, project: Project) -> None:
     """Print the status of the environent as a nicely formatted table."""
-
-    from kraken.core.util.asciitable import AsciiTable
-    from kraken.core.util.json import dt2json
 
     hash_algorithm = manager.get_hash_algorithm()
 
@@ -199,7 +193,7 @@ def _print_env_status(manager: BuildEnvManager, project: Project) -> None:
         environment = manager.get_environment()
         table.rows.append(("Environment", str(environment.get_path()), environment.get_type().name))
         table.rows.append(("  Metadata", str(manager.get_metadata_file()), "-"))
-        table.rows.append(("    Created at", "", dt2json(metadata.created_at)))
+        table.rows.append(("    Created at", "", datetime_to_iso8601(metadata.created_at)))
         table.rows.append(("    Requirements hash", "", metadata.requirements_hash))
     else:
         table.rows.append(("Environment", str(manager.get_environment().get_path()), "n/a"))
@@ -211,7 +205,7 @@ def _ensure_installed(
     project: Project,
     reinstall: bool,
     upgrade: bool,
-    env_type: BuildEnvType | None = None,
+    env_type: EnvironmentType | None = None,
 ) -> None:
 
     exists = manager.exists()
@@ -290,71 +284,74 @@ class Project(NamedTuple):
     lockfile: Lockfile | None
 
 
-def load_project(
-    requirements_path: Path = Path(BUILDSCRIPT_FILENAME),
-    lockfile_path: Path = Path(LOCK_FILENAME),
-    build_support_dir: str = BUILD_SUPPORT_DIRECTORY,
-    outdated_check: bool = True,
-) -> Project:
+def load_project(directory: Path, outdated_check: bool = True) -> Project:
     """
     This method loads the details about the current Kraken project from the current working directory
     and returns it. The project information includes the requirements for the project as well as the
     parsed lockfile, if present.
 
-    :param requirements_path: The file to parse the requirements from the header.
-    :param lockfile_path: The file to parse as a lockfile, if present.
-    :param build_support_dir: The directory that is supposed to be always present in the
-        :attr:`RequirementSpec.pythonpath`.
+    :param directory: The directory for which to load the build project details for.
     :param outdated_check: If enabled, performs a check to see if the requirements that the lockfile was
         generated with is outdated compared to the project requirements.
     """
 
-    from kraken.core.util.requirements import parse_requirements_from_python_script
-
-    from kraken.wrapper.lockfile import Lockfile
-
-    if not requirements_path.is_file():
-        print(f'error: no "{requirements_path}" in current directory', file=sys.stderr)
+    runner, script = find_build_script(directory)
+    if not runner:
+        eprint(f'could not find buildscript in directory "{directory}')
         sys.exit(1)
+    assert script is not None
 
     # Load requirement spec from build script.
-    logger.debug('loading requirements from "%s"', requirements_path)
-    with requirements_path.open() as fp:
-        requirements = parse_requirements_from_python_script(fp)
-        if not requirements.requirements:
-            print(f'error: no requirements in "{requirements_path}"')
+    logger.debug('loading requirements from "%s" (runner: %s)', script, runner)
+
+    # For backwards compatibility, support loading the requirements from the comment header.
+    requirements = deprecated_get_requirement_spec_from_file_header(script)
+    if requirements is not None:
+        logger.warning(
+            "The # ::requirements header is deprecated and support for it will be removed in a future version "
+            "of kraken-wrapper. Please use the `buildscript()` function from the `kraken.commons` package "
+            "from now on.\n\n%s\n",
+            indent(runner.get_buildscript_call_recommendation(requirements.to_metadata()), "    "),
+        )
+
+    # Otherwise, extract the relevant data from the buildscript() call instead.
+    else:
+        if not runner.has_buildscript_call(script):
+            metadata = BuildscriptMetadata(requirements=["kraken-core"])
+            logger.error(
+                "Kraken build scripts must call the `buildscript()` function to be compatible with Kraken wrapper. "
+                "Please add something like this at the top of your build script:\n\n%s\n",
+                indent(runner.get_buildscript_call_recommendation(metadata), "    "),
+            )
             sys.exit(1)
-        if build_support_dir not in requirements.pythonpath:
-            requirements = requirements.with_pythonpath([build_support_dir])
-        if not requirements.interpreter_constraint:
-            requirements = requirements.replace(interpreter_constraint=DEFAULT_INTERPRETER_CONSTRAINT)
+
+        with BuildscriptMetadata.capture() as future:
+            runner.execute_script(script, {})
+        assert future.done()
+        requirements = RequirementSpec.from_metadata(future.result())
+
+    # Derive the lockfile path.
+    lockfile_path = script.with_suffix(".lock")
 
     # Load lockfile if it exists.
     if lockfile_path.is_file():
         logger.debug('loading lockfile from "%s"', lockfile_path)
         lockfile = Lockfile.from_path(lockfile_path)
         if outdated_check and lockfile and lockfile.requirements != requirements:
-            eprint(f'lock file "{lockfile_path}" is outdated compared to requirements in "{requirements_path}"')
+            eprint(f'lock file "{lockfile_path}" is outdated compared to requirements in "{script}"')
             eprint("consider updating the lock file with `krakenw --upgrade lock`")
     else:
         lockfile = None
 
-    return Project(requirements_path, requirements, lockfile_path, lockfile)
+    return Project(script, requirements, lockfile_path, lockfile)
 
 
 def main() -> NoReturn:
-    from kraken.core.cli.option_sets import LoggingOptions
-
-    from kraken.wrapper.buildenv import BuildEnvManager
-    from kraken.wrapper.config import DEFAULT_CONFIG_PATH, AuthModel, ConfigFile
-    from kraken.wrapper.option_sets import EnvOptions
-
     parser = _get_argument_parser()
     args = parser.parse_args()
     logging_options = LoggingOptions.collect(args)
     logging_options.init_logging()
     env_options = EnvOptions.collect(args)
-    config = ConfigFile(DEFAULT_CONFIG_PATH)
 
     if not args.cmd and not env_options.any():
         parser.print_usage()
@@ -367,12 +364,13 @@ def main() -> NoReturn:
 
     if cmd in ("a", "auth"):
         # The `auth` comand does not require any current project information, it can be used globally.
-        auth(f"{parser.prog} auth", argv, AuthModel(config))
+        auth(f"{parser.prog} auth", argv)
 
     # The project details and build environment manager are relevant for any command that we are delegating.
     # This includes the built-in `lock` command.
-    project = load_project(outdated_check=not env_options.upgrade)
-    manager = BuildEnvManager(BUILDENV_PATH, AuthModel(config))
+    config = TomlConfigFile(DEFAULT_CONFIG_PATH)
+    project = load_project(Path.cwd(), outdated_check=not env_options.upgrade)
+    manager = BuildEnvManager(BUILDENV_PATH, AuthModel(config, DEFAULT_CONFIG_PATH))
 
     # Execute environment operations before delegating the command.
 
