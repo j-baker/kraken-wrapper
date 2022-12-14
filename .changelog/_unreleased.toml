@@ -1,0 +1,5 @@
+[[entries]]
+id = "7541ba55-6eb7-4082-8637-f78c06c7c898"
+type = "fix"
+description = "fix `KeyError` that could occurr when creating lockfile if the name of a requirement does not exactly match the distribution name (e.g. due to normalization)"
+author = "@NiklasRosenstein"

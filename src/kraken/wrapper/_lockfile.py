@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,11 @@ class Lockfile:
         return requirements
 
 
+def normalize_package_name(name: str) -> str:
+    # PEP503/PEP426 normalized package name.
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 def calculate_lockfile(
     requirements: RequirementSpec,
     distributions: list[Distribution],
@@ -86,10 +92,9 @@ def calculate_lockfile(
 
     # Contains the versions we pinned.
     pinned: dict[str, str] = {}
-    pinned_lower: set[str] = set()
 
-    # Convert all distribution names to lowercase.
-    dists = {dist.name.lower(): dist for dist in distributions}
+    # Normalize distribution names.
+    dists = {normalize_package_name(dist.name): dist for dist in distributions}
 
     # Convert our internal requirements representation to parsed requirements. Local requirements
     # are treated without extras.
@@ -100,23 +105,18 @@ def calculate_lockfile(
 
     while requirements_stack:
         package_req = requirements_stack.pop(0)
-        package_name = package_req.project_name
+        package_name = normalize_package_name(package_req.project_name)
 
         if package_name in pinned:
             # Already collected it.
             # TODO (@NiklasRosenstein): Maybe this req has extras we haven't considered yer?
-            continue
-
-        if package_name.lower() in pinned_lower:
             # NOTE (@NiklasRosenstein): We may be missing the package because it's a requirement that is only
             #       installed under certain conditions (e.g. markers/extras).
             continue
 
-        dist = dists[package_name.lower()]
-
         # Pin the package version.
-        pinned[dist.name] = dist.version
-        pinned_lower.add(package_name)
+        dist = dists[package_name]
+        pinned[package_name] = dist.version
 
         # Filter the requirements of the distribution down to the ones required according to markers and the
         # current package requirement's extras.
@@ -124,6 +124,6 @@ def calculate_lockfile(
             if not req.marker or any(req.marker.evaluate({"extra": extra}) for extra in package_req.extras):
                 requirements_stack.append(req)
 
-    extra_distributions = dists.keys() - pinned_lower
+    extra_distributions = dists.keys() - pinned.keys()
     pinned = {k: v for k, v in sorted(pinned.items(), key=lambda t: t[0].lower())}
     return Lockfile(requirements, pinned), extra_distributions
