@@ -5,6 +5,7 @@ import builtins
 import getpass
 import logging
 import os
+import shlex
 import sys
 import time
 from functools import partial
@@ -21,8 +22,8 @@ from kraken.common import (
     TomlConfigFile,
     datetime_to_iso8601,
     deprecated_get_requirement_spec_from_file_header,
-    find_build_script,
     inline_text,
+    GitAwareProjectFinder,
 )
 from termcolor import colored
 
@@ -278,6 +279,7 @@ def _ensure_installed(
 
 
 class Project(NamedTuple):
+    directory: Path
     requirements_path: Path
     requirements: RequirementSpec
     lockfile_path: Path
@@ -295,11 +297,11 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
         generated with is outdated compared to the project requirements.
     """
 
-    runner, script = find_build_script(directory)
-    if not runner:
-        eprint(f'could not find buildscript in directory "{directory}')
+    project_info = GitAwareProjectFinder.default().find_project(directory)
+    if not project_info:
+        eprint(f'error: no buildscript')
         sys.exit(1)
-    assert script is not None
+    runner, script = project_info
 
     # Load requirement spec from build script.
     logger.debug('loading requirements from "%s" (runner: %s)', script, runner)
@@ -308,7 +310,7 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
     requirements = deprecated_get_requirement_spec_from_file_header(script)
     if requirements is not None:
         logger.warning(
-            "The # ::requirements header is deprecated and support for it will be removed in a future version "
+            "error: The # ::requirements header is deprecated and support for it will be removed in a future version "
             "of kraken-wrapper. Please use the `buildscript()` function from the `kraken.commons` package "
             "from now on.\n\n%s\n",
             indent(runner.get_buildscript_call_recommendation(requirements.to_metadata()), "    "),
@@ -318,9 +320,9 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
     else:
         if not runner.has_buildscript_call(script):
             metadata = BuildscriptMetadata(requirements=["kraken-core"])
-            logger.error(
+            eprint(
                 "Kraken build scripts must call the `buildscript()` function to be compatible with Kraken wrapper. "
-                "Please add something like this at the top of your build script:\n\n%s\n",
+                "Please add something like this at the top of your build script:\n\n%s\n" %
                 indent(runner.get_buildscript_call_recommendation(metadata), "    "),
             )
             sys.exit(1)
@@ -343,7 +345,7 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
     else:
         lockfile = None
 
-    return Project(script, requirements, lockfile_path, lockfile)
+    return Project(script.parent, script, requirements, lockfile_path, lockfile)
 
 
 def main() -> NoReturn:
@@ -406,8 +408,12 @@ def main() -> NoReturn:
         lock(f"{parser.prog} lock", argv, manager, project)
 
     else:
+        if project.directory.absolute() != Path.cwd():
+            argv = ["-p", str(project.directory)] + argv
+        command = [cmd, *argv]
+        eprint("$", " ".join(map(shlex.quote, ["kraken"] + command)))
         environment = manager.get_environment()
-        environment.dispatch_to_kraken_cli([cmd, *argv])
+        environment.dispatch_to_kraken_cli(command)
 
 
 if __name__ == "__main__":
