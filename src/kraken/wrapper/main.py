@@ -17,13 +17,13 @@ from kraken.common import (
     AsciiTable,
     BuildscriptMetadata,
     EnvironmentType,
+    GitAwareProjectFinder,
     LoggingOptions,
     RequirementSpec,
     TomlConfigFile,
     datetime_to_iso8601,
     deprecated_get_requirement_spec_from_file_header,
     inline_text,
-    GitAwareProjectFinder,
 )
 from termcolor import colored
 
@@ -299,9 +299,9 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
 
     project_info = GitAwareProjectFinder.default().find_project(directory)
     if not project_info:
-        eprint(f'error: no buildscript')
+        eprint("error: no buildscript")
         sys.exit(1)
-    runner, script = project_info
+    script, runner = project_info
 
     # Load requirement spec from build script.
     logger.debug('loading requirements from "%s" (runner: %s)', script, runner)
@@ -322,8 +322,8 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
             metadata = BuildscriptMetadata(requirements=["kraken-core"])
             eprint(
                 "Kraken build scripts must call the `buildscript()` function to be compatible with Kraken wrapper. "
-                "Please add something like this at the top of your build script:\n\n%s\n" %
-                indent(runner.get_buildscript_call_recommendation(metadata), "    "),
+                "Please add something like this at the top of your build script:\n\n%s\n"
+                % indent(runner.get_buildscript_call_recommendation(metadata), "    "),
             )
             sys.exit(1)
 
