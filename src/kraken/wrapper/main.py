@@ -309,11 +309,11 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
     # For backwards compatibility, support loading the requirements from the comment header.
     requirements = deprecated_get_requirement_spec_from_file_header(script)
     if requirements is not None:
-        logger.warning(
+        eprint(
             "error: The # ::requirements header is deprecated and support for it will be removed in a future version "
             "of kraken-wrapper. Please use the `buildscript()` function from the `kraken.commons` package "
-            "from now on.\n\n%s\n",
-            indent(runner.get_buildscript_call_recommendation(requirements.to_metadata()), "    "),
+            "from now on.\n\n%s\n"
+            % indent(runner.get_buildscript_call_recommendation(requirements.to_metadata()), "    "),
         )
 
     # Otherwise, extract the relevant data from the buildscript() call instead.
