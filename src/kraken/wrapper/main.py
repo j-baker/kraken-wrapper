@@ -372,7 +372,7 @@ def main() -> NoReturn:
     # This includes the built-in `lock` command.
     config = TomlConfigFile(DEFAULT_CONFIG_PATH)
     project = load_project(Path.cwd(), outdated_check=not env_options.upgrade)
-    manager = BuildEnvManager(BUILDENV_PATH, AuthModel(config, DEFAULT_CONFIG_PATH))
+    manager = BuildEnvManager(project.directory / BUILDENV_PATH, AuthModel(config, DEFAULT_CONFIG_PATH))
 
     # Execute environment operations before delegating the command.
 
