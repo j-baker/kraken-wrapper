@@ -5,6 +5,7 @@ import builtins
 import getpass
 import logging
 import os
+import shlex
 import sys
 import time
 from functools import partial
@@ -16,12 +17,12 @@ from kraken.common import (
     AsciiTable,
     BuildscriptMetadata,
     EnvironmentType,
+    GitAwareProjectFinder,
     LoggingOptions,
     RequirementSpec,
     TomlConfigFile,
     datetime_to_iso8601,
     deprecated_get_requirement_spec_from_file_header,
-    find_build_script,
     inline_text,
 )
 from termcolor import colored
@@ -278,6 +279,7 @@ def _ensure_installed(
 
 
 class Project(NamedTuple):
+    directory: Path
     requirements_path: Path
     requirements: RequirementSpec
     lockfile_path: Path
@@ -295,11 +297,11 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
         generated with is outdated compared to the project requirements.
     """
 
-    runner, script = find_build_script(directory)
-    if not runner:
-        eprint(f'could not find buildscript in directory "{directory}')
+    project_info = GitAwareProjectFinder.default().find_project(directory)
+    if not project_info:
+        eprint("error: no buildscript")
         sys.exit(1)
-    assert script is not None
+    script, runner = project_info
 
     # Load requirement spec from build script.
     logger.debug('loading requirements from "%s" (runner: %s)', script, runner)
@@ -307,21 +309,21 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
     # For backwards compatibility, support loading the requirements from the comment header.
     requirements = deprecated_get_requirement_spec_from_file_header(script)
     if requirements is not None:
-        logger.warning(
-            "The # ::requirements header is deprecated and support for it will be removed in a future version "
+        eprint(
+            "error: The # ::requirements header is deprecated and support for it will be removed in a future version "
             "of kraken-wrapper. Please use the `buildscript()` function from the `kraken.commons` package "
-            "from now on.\n\n%s\n",
-            indent(runner.get_buildscript_call_recommendation(requirements.to_metadata()), "    "),
+            "from now on.\n\n%s\n"
+            % indent(runner.get_buildscript_call_recommendation(requirements.to_metadata()), "    "),
         )
 
     # Otherwise, extract the relevant data from the buildscript() call instead.
     else:
         if not runner.has_buildscript_call(script):
             metadata = BuildscriptMetadata(requirements=["kraken-core"])
-            logger.error(
+            eprint(
                 "Kraken build scripts must call the `buildscript()` function to be compatible with Kraken wrapper. "
-                "Please add something like this at the top of your build script:\n\n%s\n",
-                indent(runner.get_buildscript_call_recommendation(metadata), "    "),
+                "Please add something like this at the top of your build script:\n\n%s\n"
+                % indent(runner.get_buildscript_call_recommendation(metadata), "    "),
             )
             sys.exit(1)
 
@@ -343,7 +345,7 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
     else:
         lockfile = None
 
-    return Project(script, requirements, lockfile_path, lockfile)
+    return Project(script.parent, script, requirements, lockfile_path, lockfile)
 
 
 def main() -> NoReturn:
@@ -370,7 +372,7 @@ def main() -> NoReturn:
     # This includes the built-in `lock` command.
     config = TomlConfigFile(DEFAULT_CONFIG_PATH)
     project = load_project(Path.cwd(), outdated_check=not env_options.upgrade)
-    manager = BuildEnvManager(BUILDENV_PATH, AuthModel(config, DEFAULT_CONFIG_PATH))
+    manager = BuildEnvManager(project.directory / BUILDENV_PATH, AuthModel(config, DEFAULT_CONFIG_PATH))
 
     # Execute environment operations before delegating the command.
 
@@ -406,8 +408,12 @@ def main() -> NoReturn:
         lock(f"{parser.prog} lock", argv, manager, project)
 
     else:
+        if project.directory.absolute() != Path.cwd():
+            argv = ["-p", str(project.directory)] + argv
+        command = [cmd, *argv]
+        eprint("$", " ".join(map(shlex.quote, ["kraken"] + command)))
         environment = manager.get_environment()
-        environment.dispatch_to_kraken_cli([cmd, *argv])
+        environment.dispatch_to_kraken_cli(command)
 
 
 if __name__ == "__main__":
