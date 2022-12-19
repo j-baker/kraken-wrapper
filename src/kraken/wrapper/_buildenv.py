@@ -275,6 +275,7 @@ class VenvBuildEnv(BuildEnv):
         command = [str(python), "-c", f"{KRAKEN_MAIN_IMPORT_SNIPPET}\nmain()", *argv]
         env = os.environ.copy()
         self.get_type().set(env)
+        env["PATH"] = str(self._venv.get_bin_directory()) + os.pathsep + env.get("PATH", "")
         sys.exit(subprocess.call(command, env=env))
 
 
