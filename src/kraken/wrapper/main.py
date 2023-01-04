@@ -311,7 +311,7 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
     if requirements is not None:
         eprint(
             "error: The # ::requirements header is deprecated and support for it will be removed in a future version "
-            "of kraken-wrapper. Please use the `buildscript()` function from the `kraken.commons` package "
+            "of kraken-wrapper. Please use the `buildscript()` function from the `kraken.common` package "
             "from now on.\n\n%s\n"
             % indent(runner.get_buildscript_call_recommendation(requirements.to_metadata()), "    "),
         )
