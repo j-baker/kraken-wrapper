@@ -28,7 +28,7 @@ from kraken.common import (
 from termcolor import colored
 
 from . import __version__
-from ._buildenv import BuildEnvManager
+from ._buildenv_manager import BuildEnvManager
 from ._config import DEFAULT_CONFIG_PATH, AuthModel
 from ._lockfile import Lockfile, calculate_lockfile
 from ._option_sets import AuthOptions, EnvOptions
