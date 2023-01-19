@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Iterator, NoReturn, Sequence
 from urllib.parse import quote, urlparse, urlunparse
+import platform
 
 from kraken.common import (
     EnvironmentType,
@@ -27,12 +28,9 @@ from kraken.common import (
     safe_rmpath,
 )
 from kraken.common.pyenv import VirtualEnvInfo
-from pex.pex import PEX
-from pex.pex_bootstrapper import bootstrap_pex_env
 
 from ._config import AuthModel
 from ._lockfile import Distribution, Lockfile
-from ._pex import PEXBuildConfig, PEXLayout
 
 logger = logging.getLogger(__name__)
 
@@ -116,91 +114,97 @@ class BuildEnvMetadataStore:
         self._metadata = metadata
 
 
-class PexBuildEnv(BuildEnv):
-    STYLES = (EnvironmentType.PEX_ZIPAPP, EnvironmentType.PEX_PACKED, EnvironmentType.PEX_LOOSE)
+if platform.system().lower() != "windows":
+    # We don't support Pex on windows so move the imports here.
+    from pex.pex import PEX
+    from pex.pex_bootstrapper import bootstrap_pex_env
+    from ._pex import PEXBuildConfig, PEXLayout
 
-    def __init__(self, style: EnvironmentType, path: Path) -> None:
-        assert style in self.STYLES
-        self._style = style
-        self._path = path
+    class PexBuildEnv(BuildEnv):
+        STYLES = (EnvironmentType.PEX_ZIPAPP, EnvironmentType.PEX_PACKED, EnvironmentType.PEX_LOOSE)
 
-    @contextlib.contextmanager
-    def activate(self) -> Iterator[None]:
-        assert self._path.exists(), f'expected PEX file at "{self._path}"'
-        pex = PEX(self._path)
+        def __init__(self, style: EnvironmentType, path: Path) -> None:
+            assert style in self.STYLES
+            self._style = style
+            self._path = path
 
-        state = {}
-        for key in ["displayhook", "excepthook", "modules", "path", "path_importer_cache"]:
-            state[key] = copy.copy(getattr(sys, key))
+        @contextlib.contextmanager
+        def activate(self) -> Iterator[None]:
+            assert self._path.exists(), f'expected PEX file at "{self._path}"'
+            pex = PEX(self._path)
 
-        try:
-            bootstrap_pex_env(str(pex.path()))
-            pex.activate()
-            yield
-        finally:
-            for key, value in state.items():
-                setattr(sys, key, value)
-
-    # BuildEnv
-
-    def get_path(self) -> Path:
-        return self._path
-
-    def get_type(self) -> EnvironmentType:
-        return self._style
-
-    def get_installed_distributions(self) -> list[Distribution]:
-        return _get_installed_distributions([sys.executable, str(self._path)])
-
-    def build(self, requirements: RequirementSpec, transitive: bool) -> None:
-        config = PEXBuildConfig(
-            interpreter_constraints=(
-                [requirements.interpreter_constraint] if requirements.interpreter_constraint else []
-            ),
-            script="kraken",
-            requirements=requirements.to_args(Path.cwd(), with_options=False),
-            index_url=requirements.index_url,
-            extra_index_urls=list(requirements.extra_index_urls),
-            transitive=True,  # Our lockfiles are not fully cross platform compatible (see kraken-wrapper#2)
-        )
-
-        layout = {
-            EnvironmentType.PEX_ZIPAPP: PEXLayout.ZIPAPP,
-            EnvironmentType.PEX_PACKED: PEXLayout.PACKED,
-            EnvironmentType.PEX_LOOSE: PEXLayout.LOOSE,
-        }[self._style]
-
-        logger.debug("PEX build configuration is %s", lazy_str(lambda: pprint.pformat(config)))
-
-        logger.info('begin PEX resolve for build environment "%s"', self._path)
-        installed = config.resolve()
-
-        logger.info('building PEX for build environment "%s"', self._path)
-        builder = config.builder(installed)
-        builder.build(str(self._path), layout=layout)
-
-    def dispatch_to_kraken_cli(self, argv: list[str]) -> NoReturn:
-        with self.activate():
-            import logging
-
-            scope: dict[str, Any] = {}
-            exec(KRAKEN_MAIN_IMPORT_SNIPPET, scope)
-            main: Callable[[str, Sequence[str]], NoReturn] = scope["main"]
-
-            # We need to un-initialize the logger such that kraken-core can re-initialize it.
-            for handler in logging.root.handlers[:]:
-                logging.root.removeHandler(handler)
-
-            env_backup = os.environ.copy()
-            self.get_type().set(os.environ)
+            state = {}
+            for key in ["displayhook", "excepthook", "modules", "path", "path_importer_cache"]:
+                state[key] = copy.copy(getattr(sys, key))
 
             try:
-                main("krakenw", argv)
+                bootstrap_pex_env(str(pex.path()))
+                pex.activate()
+                yield
             finally:
-                os.environ.clear()
-                os.environ.update(env_backup)
+                for key, value in state.items():
+                    setattr(sys, key, value)
 
-        assert False, "should not be reached"
+        # BuildEnv
+
+        def get_path(self) -> Path:
+            return self._path
+
+        def get_type(self) -> EnvironmentType:
+            return self._style
+
+        def get_installed_distributions(self) -> list[Distribution]:
+            return _get_installed_distributions([sys.executable, str(self._path)])
+
+        def build(self, requirements: RequirementSpec, transitive: bool) -> None:
+            config = PEXBuildConfig(
+                interpreter_constraints=(
+                    [requirements.interpreter_constraint] if requirements.interpreter_constraint else []
+                ),
+                script="kraken",
+                requirements=requirements.to_args(Path.cwd(), with_options=False),
+                index_url=requirements.index_url,
+                extra_index_urls=list(requirements.extra_index_urls),
+                transitive=True,  # Our lockfiles are not fully cross platform compatible (see kraken-wrapper#2)
+            )
+
+            layout = {
+                EnvironmentType.PEX_ZIPAPP: PEXLayout.ZIPAPP,
+                EnvironmentType.PEX_PACKED: PEXLayout.PACKED,
+                EnvironmentType.PEX_LOOSE: PEXLayout.LOOSE,
+            }[self._style]
+
+            logger.debug("PEX build configuration is %s", lazy_str(lambda: pprint.pformat(config)))
+
+            logger.info('begin PEX resolve for build environment "%s"', self._path)
+            installed = config.resolve()
+
+            logger.info('building PEX for build environment "%s"', self._path)
+            builder = config.builder(installed)
+            builder.build(str(self._path), layout=layout)
+
+        def dispatch_to_kraken_cli(self, argv: list[str]) -> NoReturn:
+            with self.activate():
+                import logging
+
+                scope: dict[str, Any] = {}
+                exec(KRAKEN_MAIN_IMPORT_SNIPPET, scope)
+                main: Callable[[str, Sequence[str]], NoReturn] = scope["main"]
+
+                # We need to un-initialize the logger such that kraken-core can re-initialize it.
+                for handler in logging.root.handlers[:]:
+                    logging.root.removeHandler(handler)
+
+                env_backup = os.environ.copy()
+                self.get_type().set(os.environ)
+
+                try:
+                    main("krakenw", argv)
+                finally:
+                    os.environ.clear()
+                    os.environ.update(env_backup)
+
+            assert False, "should not be reached"
 
 
 class VenvBuildEnv(BuildEnv):
@@ -384,7 +388,10 @@ class BuildEnvManager:
 
 def _get_environment_for_type(environment_type: EnvironmentType, base_path: Path) -> BuildEnv:
     if environment_type in PexBuildEnv.STYLES:
-        return PexBuildEnv(environment_type, base_path.parent / (base_path.name + ".pex"))
+        if platform.system().lower() != "windows":
+            return PexBuildEnv(environment_type, base_path.parent / (base_path.name + ".pex"))
+        else:
+            raise RuntimeError(f"pex environment type not supported on windows")
     elif environment_type == EnvironmentType.VENV:
         return VenvBuildEnv(base_path, incremental=os.getenv("KRAKENW_INCREMENTAL") == "1")
     else:
