@@ -9,13 +9,13 @@ import hashlib
 import json
 import logging
 import os
+import platform
 import pprint
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Callable, Iterator, NoReturn, Sequence
 from urllib.parse import quote, urlparse, urlunparse
-import platform
 
 from kraken.common import (
     EnvironmentType,
@@ -118,6 +118,7 @@ if platform.system().lower() != "windows":
     # We don't support Pex on windows so move the imports here.
     from pex.pex import PEX
     from pex.pex_bootstrapper import bootstrap_pex_env
+
     from ._pex import PEXBuildConfig, PEXLayout
 
     class PexBuildEnv(BuildEnv):
