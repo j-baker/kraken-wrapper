@@ -2,7 +2,6 @@ import contextlib
 import copy
 import logging
 import os
-import platform
 import pprint
 import sys
 from pathlib import Path
@@ -104,7 +103,3 @@ class PexBuildEnv(BuildEnv):
                 os.environ.update(env_backup)
 
         assert False, "should not be reached"
-
-
-def _pex_build_env_supported() -> bool:
-    return platform.system().lower() != "windows"

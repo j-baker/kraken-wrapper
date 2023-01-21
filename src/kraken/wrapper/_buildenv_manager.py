@@ -4,6 +4,7 @@ import datetime
 import hashlib
 import logging
 import os
+import platform
 from pathlib import Path
 from urllib.parse import quote, urlparse, urlunparse
 
@@ -11,12 +12,8 @@ from kraken.common import EnvironmentType, RequirementSpec, not_none, safe_rmpat
 
 from ._buildend_venv import VenvBuildEnv
 from ._buildenv import BuildEnv, BuildEnvMetadata, BuildEnvMetadataStore
-from ._buildenv_pex import _pex_build_env_supported
 from ._config import AuthModel
 from ._lockfile import Lockfile
-
-if _pex_build_env_supported():
-    from ._buildenv_pex import PexBuildEnv
 
 logger = logging.getLogger(__name__)
 
@@ -125,12 +122,14 @@ class BuildEnvManager:
 
 
 def _get_environment_for_type(environment_type: EnvironmentType, base_path: Path) -> BuildEnv:
-    if environment_type in PexBuildEnv.STYLES:
-        if _pex_build_env_supported():
+    platform_name = platform.system().lower()
+    if platform_name != "windows":
+        from ._buildenv_pex import PexBuildEnv
+
+        if environment_type in PexBuildEnv.STYLES:
             return PexBuildEnv(environment_type, base_path.parent / (base_path.name + ".pex"))
-        else:
-            raise RuntimeError("pex environment type not supported on windows")
-    elif environment_type == EnvironmentType.VENV:
+
+    if environment_type == EnvironmentType.VENV:
         return VenvBuildEnv(base_path, incremental=os.getenv("KRAKENW_INCREMENTAL") == "1")
     else:
-        raise RuntimeError(f"unsupported environment type: {environment_type!r}")
+        raise RuntimeError(f"unsupported environment type {environment_type!r} on platform {platform_name!r}")
