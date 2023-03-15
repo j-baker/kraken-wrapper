@@ -355,12 +355,14 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
 def main() -> NoReturn:
     parser = _get_argument_parser()
     args = parser.parse_args()
-    if args.run_doctor:
-        Doctor.hello_world()
-        sys.exit(0)
+
     logging_options = LoggingOptions.collect(args)
     logging_options.init_logging()
     env_options = EnvOptions.collect(args)
+
+    if args.run_doctor:
+        Doctor.hello_world()
+        sys.exit(0)
 
     if not args.cmd and not env_options.any():
         parser.print_usage()
