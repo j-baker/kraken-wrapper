@@ -28,6 +28,7 @@ from kraken.common import (
 from termcolor import colored
 
 from . import __version__
+from ._doctor import Doctor
 from ._buildenv_manager import BuildEnvManager
 from ._config import DEFAULT_CONFIG_PATH, AuthModel
 from ._lockfile import Lockfile, calculate_lockfile
@@ -45,7 +46,6 @@ eprint = partial(print, file=sys.stderr)
 
 
 def _get_argument_parser() -> argparse.ArgumentParser:
-
     parser = argparse.ArgumentParser(
         "krakenw",
         formatter_class=_FormatterClass,
@@ -63,6 +63,12 @@ def _get_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("-V", "--version", version=__version__, action="version")
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        dest="run_doctor",
+        help="run the debug doctor script",
+    )
     LoggingOptions.add_to_parser(parser)
     EnvOptions.add_to_parser(parser)
 
@@ -75,7 +81,6 @@ def _get_argument_parser() -> argparse.ArgumentParser:
 
 
 def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
-
     parser = argparse.ArgumentParser(
         prog,
         formatter_class=_FormatterClass,
@@ -208,7 +213,6 @@ def _ensure_installed(
     upgrade: bool,
     env_type: EnvironmentType | None = None,
 ) -> None:
-
     exists = manager.exists()
     install = reinstall or upgrade or not exists
 
@@ -351,6 +355,9 @@ def load_project(directory: Path, outdated_check: bool = True) -> Project:
 def main() -> NoReturn:
     parser = _get_argument_parser()
     args = parser.parse_args()
+    if args.run_doctor:
+        Doctor.hello_world()
+        sys.exit(0)
     logging_options = LoggingOptions.collect(args)
     logging_options.init_logging()
     env_options = EnvOptions.collect(args)
