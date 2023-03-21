@@ -45,7 +45,6 @@ eprint = partial(print, file=sys.stderr)
 
 
 def _get_argument_parser() -> argparse.ArgumentParser:
-
     parser = argparse.ArgumentParser(
         "krakenw",
         formatter_class=_FormatterClass,
@@ -61,6 +60,13 @@ def _get_argument_parser() -> argparse.ArgumentParser:
             To learn more about kraken, visit https://github.com/kraken-build/kraken-core.
             """
         ),
+        epilog=inline_text(
+            colored(
+                "This is kraken-wrapper's help. To show kraken's help instead, run krakenw -- --help",
+                "yellow",
+                attrs=["bold"],
+            )
+        ),
     )
     parser.add_argument("-V", "--version", version=__version__, action="version")
     LoggingOptions.add_to_parser(parser)
@@ -75,7 +81,6 @@ def _get_argument_parser() -> argparse.ArgumentParser:
 
 
 def _get_lock_argument_parser(prog: str) -> argparse.ArgumentParser:
-
     parser = argparse.ArgumentParser(
         prog,
         formatter_class=_FormatterClass,
@@ -208,7 +213,6 @@ def _ensure_installed(
     upgrade: bool,
     env_type: EnvironmentType | None = None,
 ) -> None:
-
     exists = manager.exists()
     install = reinstall or upgrade or not exists
 
