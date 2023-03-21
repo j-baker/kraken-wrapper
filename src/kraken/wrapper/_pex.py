@@ -29,7 +29,6 @@ __all__ = [
 
 @dataclasses.dataclass
 class PEXBuildConfig:
-
     # PEXBuilder
     preamble: str | None = None
     copy_mode: CopyMode = CopyMode.SYMLINK
