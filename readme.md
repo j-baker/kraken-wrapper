@@ -1,6 +1,12 @@
 # kraken-wrapper
 
-Provides the `krakenw` command which is a wrapper around Kraken build scripts to construct an isolated and
-reproducible build environment as per the dependencies specified in the script.
+This projects implements `krakenw`, the wrapper CLI for the Kraken build system that enables reproducible builds
+via lock files and executing builds from inside subdirectories.
 
 For more information, check out the [Kraken Documentation](https://kraken-build.github.io/docs/).
+
+__Installation__
+
+You need Python 3.7+, <3.11 (currently limited due to an incompatibility with Dill).
+
+    $ pipx install kraken-wrapper
