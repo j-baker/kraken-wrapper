@@ -22,13 +22,9 @@
         inherit (poetry2nix.legacyPackages.${system}) mkPoetryApplication defaultPoetryOverrides;
         my_overrides = ( self: super: {
     	# needed for builddsl
-    	  builddsl = super.builddsl.overridePythonAttrs
-    	    ( old: {
-                    buildInputs = (old.buildInputs or [ ]) ++ [ super.setuptools super.poetry ];
-                  });
           types-dataclasses = super.types-dataclasses.overridePythonAttrs
     	    ( old: {
-                    buildInputs = (old.buildInputs or [ ]) ++ [ super.setuptools super.poetry ];
+                    buildInputs = (old.buildInputs or [ ]) ++ [ super.setuptools ];
                   });
 
           });
@@ -37,6 +33,7 @@
         packages = flake-utils.lib.flattenTree {
           krakenw = (mkPoetryApplication {
             projectDir = ./.;
+            overrides = defaultPoetryOverrides.extend my_overrides;
           });
         };
 
@@ -44,7 +41,18 @@
           name = "Helsing tooling";
 
           buildInputs = [
-	        packages.krakenw
+	        pkgs.python310
+            pkgs.python310.pkgs.flake8
+            pkgs.python310Packages.pip
+            #pkgs.python310Packages.cryptography
+            pkgs.poetry
+            pkgs.protobuf
+            pkgs.black
+            pkgs.mypy
+            pkgs.isort
+            pkgs.cargo
+            pkgs.rustfmt
+            packages.krakenw
           ];
         };
       }
