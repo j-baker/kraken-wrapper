@@ -44,11 +44,12 @@
 				];
       in
       rec {
-        packages = flake-utils.lib.flattenTree {
+        packages = flake-utils.lib.flattenTree rec {
           krakenw = (mkPoetryApplication {
             projectDir = ./.;
             overrides = defaultPoetryOverrides.extend my_overrides;
           });
+          default = krakenw;
         };
 
         devShells.default = pkgs.mkShell {
