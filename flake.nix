@@ -15,21 +15,33 @@
 
   };
 
-  outputs = { self, python-builddsl, nixpkgs, poetry2nix, flake-utils}:
+  outputs = { self, python-builddsl, nixpkgs, poetry2nix, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         inherit (poetry2nix.legacyPackages.${system}) mkPoetryApplication defaultPoetryOverrides;
-        my_overrides = ( self: super: {
-    	# needed for builddsl
+        my_overrides = (self: super: {
+          # needed for builddsl
           types-dataclasses = super.types-dataclasses.overridePythonAttrs
-    	    ( old: {
-                buildInputs = (old.buildInputs or [ ]) ++ [ super.setuptools ];
+            (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ super.setuptools ];
             });
-            cryptography = pkgs.python310Packages.cryptography.overrideAttrs (old: {
-                version = "39.0.2";
-            });
+          cryptography = pkgs.python310Packages.cryptography.overrideAttrs (old: {
+            version = "39.0.2";
           });
+        });
+				environment = with pkgs; [
+            python310
+            python310.pkgs.flake8
+            python310Packages.pip
+            poetry
+            protobuf
+            black
+            mypy
+            isort
+            cargo
+            rustfmt
+				];
       in
       rec {
         packages = flake-utils.lib.flattenTree {
@@ -42,17 +54,7 @@
         devShells.default = pkgs.mkShell {
           name = "Helsing tooling";
 
-          buildInputs = [
-	        pkgs.python310
-            pkgs.python310.pkgs.flake8
-            pkgs.python310Packages.pip
-            pkgs.poetry
-            pkgs.protobuf
-            pkgs.black
-            pkgs.mypy
-            pkgs.isort
-            pkgs.cargo
-            pkgs.rustfmt
+          buildInputs = environment ++ [
             packages.krakenw
           ];
         };
