@@ -1,5 +1,5 @@
 {
-  description = "A very basic flake";
+  description = "Flake to create kraken wrapper env.";
 
   inputs = {
     python-builddsl = {
@@ -24,9 +24,11 @@
     	# needed for builddsl
           types-dataclasses = super.types-dataclasses.overridePythonAttrs
     	    ( old: {
-                    buildInputs = (old.buildInputs or [ ]) ++ [ super.setuptools ];
-                  });
-
+                buildInputs = (old.buildInputs or [ ]) ++ [ super.setuptools ];
+            });
+            cryptography = pkgs.python310Packages.cryptography.overrideAttrs (old: {
+                version = "39.0.2";
+            });
           });
       in
       rec {
@@ -44,7 +46,6 @@
 	        pkgs.python310
             pkgs.python310.pkgs.flake8
             pkgs.python310Packages.pip
-            #pkgs.python310Packages.cryptography
             pkgs.poetry
             pkgs.protobuf
             pkgs.black

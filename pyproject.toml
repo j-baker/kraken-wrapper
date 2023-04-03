@@ -27,7 +27,7 @@ pex = "^2.1.103"
 setuptools = ">=33.0.0"  # For pkg_resources
 termcolor = "^1.1.0"
 builddsl = {git = "https://github.com/szgula/python-builddsl.git"}  # FIXME orgin builddsl repo has ivalid poetry syntex
-cryptography =  "39.0.2"    # FIXME cryptography is required by "keyring", but the newest version is not working with NIX
+#cryptography =  "39.0.2"    # FIXME cryptography is required by "keyring", but the newest version is not working with NIX
 
 [tool.poetry.dev-dependencies]
 black = "*"
