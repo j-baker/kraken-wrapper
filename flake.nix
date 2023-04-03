@@ -2,10 +2,6 @@
   description = "Flake to create kraken wrapper env.";
 
   inputs = {
-    python-builddsl = {
-      url = "github:szgula/python-builddsl";
-      flake = false;
-    };
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     poetry2nix = {
@@ -15,7 +11,7 @@
 
   };
 
-  outputs = { self, python-builddsl, nixpkgs, poetry2nix, flake-utils }:
+  outputs = { self, nixpkgs, poetry2nix, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -30,7 +26,7 @@
             version = "39.0.2";
           });
         });
-				environment = with pkgs; [
+		environment = with pkgs; [
             python310
             python310.pkgs.flake8
             python310Packages.pip
@@ -51,7 +47,6 @@
           });
           default = krakenw;
         };
-
         devShells.default = pkgs.mkShell {
           name = "Helsing tooling";
 
