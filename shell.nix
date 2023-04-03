@@ -13,5 +13,4 @@ pkgs.mkShell {
     pkgs.cargo
     pkgs.rustfmt
   ];
-
 }
