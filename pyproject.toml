@@ -26,7 +26,6 @@ kraken-common = "^0.5.2"
 pex = "^2.1.103"
 setuptools = ">=33.0.0"  # For pkg_resources
 termcolor = "^1.1.0"
-builddsl = {git = "https://github.com/szgula/python-builddsl.git"}  # FIXME orgin builddsl repo has ivalid poetry syntex
 
 [tool.poetry.dev-dependencies]
 black = "*"
