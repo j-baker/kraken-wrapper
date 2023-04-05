@@ -35,9 +35,10 @@
             black
             mypy
             isort
+            rustc
             cargo
             rustfmt
-				];
+		];
       in
       rec {
         packages = flake-utils.lib.flattenTree rec {
