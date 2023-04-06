@@ -28,16 +28,7 @@
         });
 		environment = with pkgs; [
             python310
-            python310.pkgs.flake8
             python310Packages.pip
-            poetry
-            protobuf
-            black
-            mypy
-            isort
-            rustc
-            cargo
-            rustfmt
 		];
       in
       rec {
