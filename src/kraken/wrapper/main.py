@@ -134,10 +134,18 @@ def _get_auth_argument_parser(prog: str) -> argparse.ArgumentParser:
     AuthOptions.add_to_parser(parser)
     return parser
 
+def _config_path() -> Path:
+    conf_override = os.getenv("KRAKEN_WRAPPER_CONFIG")
+    if conf_override:
+        return Path(conf_override)
+    else:
+        return DEFAULT_CONFIG_PATH
+
 
 def auth(prog: str, argv: list[str]) -> NoReturn:
-    config = TomlConfigFile(DEFAULT_CONFIG_PATH)
-    auth = AuthModel(config, DEFAULT_CONFIG_PATH)
+    config_path = _config_path()
+    config = TomlConfigFile(config_path)
+    auth = AuthModel(config, config_path)
     parser = _get_auth_argument_parser(prog)
     args = AuthOptions.collect(parser.parse_args(argv))
 
@@ -374,9 +382,9 @@ def main() -> NoReturn:
 
     # The project details and build environment manager are relevant for any command that we are delegating.
     # This includes the built-in `lock` command.
-    config = TomlConfigFile(DEFAULT_CONFIG_PATH)
+    config = TomlConfigFile(_config_path())
     project = load_project(Path.cwd(), outdated_check=not env_options.upgrade)
-    manager = BuildEnvManager(project.directory / BUILDENV_PATH, AuthModel(config, DEFAULT_CONFIG_PATH))
+    manager = BuildEnvManager(project.directory / BUILDENV_PATH, AuthModel(config, _config_path()))
 
     # Execute environment operations before delegating the command.
 
